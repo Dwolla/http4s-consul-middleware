@@ -1,7 +1,9 @@
 package com.dwolla.http4s.consul
 
 import cats.effect._
+import cats.syntax.all._
 import cats.effect.std.Random
+import com.dwolla.http4s.consul.ConsulMiddlewareApp.consulAwareClient
 import fs2.Stream
 import org.http4s.Method.GET
 import org.http4s._
@@ -14,30 +16,18 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import scala.concurrent.duration._
 
-object ConsulMiddlewareApp extends IOApp.Simple with Http4sClientDsl[IO] {
-  val uri: Uri = uri"consul://httpd/"
+class ConsulMiddlewareApp[F[_] : Async] extends Http4sClientDsl[F] {
+  val exampleConsulUri: Uri = uri"consul://httpd/"
 
-  private def clientWithTimeout[F[_] : Async](timeout: FiniteDuration): Resource[F, Client[F]] =
-    EmberClientBuilder
-      .default[F]
-      .withTimeout(timeout)
-      .build
-
-  private def longPollClient[F[_] : Async]: Resource[F, Client[F]] = clientWithTimeout(10.minutes)
-
-  private def normalClient[F[_] : Async]: Resource[F, Client[F]] = clientWithTimeout(20.seconds)
-
-  override def run: IO[Unit] = {
-    Random.scalaUtilRandom[IO].flatMap { implicit random =>
-      Slf4jLogger.create[IO].flatMap { implicit logger: Logger[IO] =>
+  def run: F[Unit] =
+    Random.scalaUtilRandom[F].flatMap { implicit random =>
+      Slf4jLogger.create[F].flatMap { implicit logger: Logger[F] =>
         (for {
-          normalClient <- Stream.resource(normalClient[IO])
-          longPollClient <- Stream.resource(longPollClient[IO])
-          client <- Stream.resource(ConsulMiddleware(ConsulServiceDiscoveryAlg(uri"http://localhost:8500", 1.minute, longPollClient))(normalClient))
-          _ <- Stream.repeatEval(client.successful(GET(uri))
+          client <- Stream.resource(consulAwareClient[F])
+          _ <- Stream.repeatEval(client.successful(GET(exampleConsulUri))
             .flatMap {
-              case true => Logger[IO].info("🔮 success")
-              case false => Logger[IO].info("🔮 failure")
+              case true => Logger[F].info("🔮 success")
+              case false => Logger[F].info("🔮 failure")
             })
             .metered(2.seconds)
         } yield ())
@@ -45,5 +35,27 @@ object ConsulMiddlewareApp extends IOApp.Simple with Http4sClientDsl[IO] {
           .drain
       }
     }
-  }
+}
+
+object ConsulMiddlewareApp extends IOApp.Simple {
+  override def run: IO[Unit] = new ConsulMiddlewareApp[IO].run
+
+  private[ConsulMiddlewareApp] def consulAwareClient[F[_] : Async : Logger : Random]: Resource[F, Client[F]] =
+    (consulServiceDiscoveryAlg[F], normalClient[F])
+      .parMapN(ConsulMiddleware(_)(_))
+      .flatten
+
+  private def consulServiceDiscoveryAlg[F[_] : Async : Logger : Random]: Resource[F, ConsulServiceDiscoveryAlg[F]] =
+    longPollClient[F].map(ConsulServiceDiscoveryAlg(uri"http://localhost:8500", 1.minute, _))
+
+  private def longPollClient[F[_] : Async]: Resource[F, Client[F]] = clientWithTimeout(10.minutes)
+
+  private def normalClient[F[_] : Async]: Resource[F, Client[F]] = clientWithTimeout(20.seconds)
+
+  private def clientWithTimeout[F[_] : Async](timeout: FiniteDuration): Resource[F, Client[F]] =
+    EmberClientBuilder
+      .default[F]
+      .withTimeout(timeout)
+      .build
+
 }
