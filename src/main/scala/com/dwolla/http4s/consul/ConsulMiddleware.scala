@@ -20,14 +20,12 @@ object ConsulMiddleware {
    * request after the first one are made quickly and don't have to wait for a
    * Consul lookup before a URI can be rewritten.
    *
-   * @param shards the number of shards to use to reduce contention on the atomic `Map` used to track the background processes
    * @param consulServiceDiscoveryAlg: the [[ConsulServiceDiscoveryAlg]] used to construct the background processes
    * @param client the `org.http4s.client.Client[F]` being wrapped, which will be used both to interact with the Consul API and also to make the eventual service requests
    */
-  def apply[F[_] : Async : Logger](shards: Int,
-                                   consulServiceDiscoveryAlg: ConsulServiceDiscoveryAlg[F])
+  def apply[F[_] : Async : Logger](consulServiceDiscoveryAlg: ConsulServiceDiscoveryAlg[F])
                                   (client: Client[F]): Resource[F, Client[F]] =
-    ResourceMap[F, ServiceName, Uri.Authority](shards)(consulServiceDiscoveryAlg.authorityForService)
+    ResourceMap[F, ServiceName, Uri.Authority](consulServiceDiscoveryAlg.authorityForService)
       .map { resourceMap: ResourceMap[F, ServiceName, Uri.Authority] =>
         Client { req: Request[F] =>
           (req.uri match {

@@ -33,7 +33,7 @@ object ConsulMiddlewareApp extends IOApp.Simple with Http4sClientDsl[IO] {
         (for {
           normalClient <- Stream.resource(normalClient[IO])
           longPollClient <- Stream.resource(longPollClient[IO])
-          client <- Stream.resource(ConsulMiddleware(1, ConsulServiceDiscoveryAlg(uri"http://localhost:8500", 1.minute, longPollClient))(normalClient))
+          client <- Stream.resource(ConsulMiddleware(ConsulServiceDiscoveryAlg(uri"http://localhost:8500", 1.minute, longPollClient))(normalClient))
           _ <- Stream.repeatEval(client.successful(GET(uri))
             .flatMap {
               case true => Logger[IO].info("🔮 success")
