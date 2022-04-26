@@ -40,10 +40,11 @@ object ConsulServiceDiscoveryAlg {
                                             longPollTimeout: FiniteDuration,
                                             client: Client[F]): ConsulServiceDiscoveryAlg[F] = new ConsulServiceDiscoveryAlg[F] {
     override def authoritiesForService(serviceName: ServiceName): Resource[F, GetCurrentValue[F, Vector[Uri.Authority]]] =
-      for {
+      (for {
         (initialValue, initialConsulIndex) <- lookup[F](serviceName, consulBaseUri, None, longPollTimeout, client).toResource
         currentValue <- continuallyUpdating(serviceName, initialValue, initialConsulIndex, consulBaseUri, longPollTimeout, client).map(GetCurrentValue(_))
-      } yield currentValue
+      } yield currentValue)
+        .flatTap(_ => Resource.unit.onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)")))
 
     override def authorityForService(serviceName: ServiceName): Resource[F, GetCurrentValue[F, Uri.Authority]] =
       authoritiesForService(serviceName)
@@ -79,6 +80,11 @@ object ConsulServiceDiscoveryAlg {
     Logger[F].trace(s"📡 getting services for $serviceName from $requestUri") >>
       client
         .run(Request[F](GET, requestUri))
+        .onFinalizeCase {
+          case Resource.ExitCase.Succeeded => Logger[F].trace(s"👋 finalized Succeeded lookup($serviceName, …).client.run")
+          case Resource.ExitCase.Errored(e) => Logger[F].trace(e)(s"👋 finalized Errored lookup($serviceName, …).client.run")
+          case Resource.ExitCase.Canceled => Logger[F].trace(s"👋 finalized Canceled lookup($serviceName, …).client.run")
+        }
         .use { resp =>
           Logger[F].trace(s"📠 ${AnsiColorCodes.red}Consul response ${AnsiColorCodes.reset}") >>
             resp
@@ -123,6 +129,7 @@ object ConsulServiceDiscoveryAlg {
     }
       .unNone                                                 // errors returned by `lookup` are emitted as None, so filter them out
       .holdResource(initialValue)
+      .onFinalize(Logger[F].trace(s"👋 shutting down continuallyUpdating($serviceName, …)"))
       .map(_.get)
 
   private[consul] def serviceListUri(consulBase: Uri,
@@ -130,7 +137,7 @@ object ConsulServiceDiscoveryAlg {
                                      index: Option[ConsulIndex],
                                      longPollTimeout: FiniteDuration,
                                     ): Uri =
-    consulBase / "v1" / "health" / "service" / serviceName +? OnlyHealthyServices +?? index +*? WaitPeriod(longPollTimeout)
+    consulBase / "v1" / "health" / "service" / serviceName +? OnlyHealthyServices +?? index +?? index.as(WaitPeriod(longPollTimeout))
 
   private implicit def jsonEntityDecoder[F[_] : Concurrent, A: Decoder]: EntityDecoder[F, A] = jsonOf[F, A]
 }

@@ -3,7 +3,7 @@ package com.dwolla.http4s
 import cats._
 import cats.effect.std.Random
 import cats.syntax.all._
-import io.estatico.newtype.macros.newtype
+import monix.newtypes.NewtypeWrapped
 import org.http4s.Header.Single
 import org.http4s.{Header, QueryParam, QueryParamEncoder, Uri}
 import org.typelevel.ci._
@@ -15,34 +15,36 @@ package object consul {
     implicit val onlyHealthyServicesQueryParam: QueryParam[OnlyHealthyServices.type] = QueryParam.fromKey("passing")
   }
 
-  @newtype case class ServiceName(value: String)
-  object ServiceName {
+  type ServiceName = ServiceName.Type
+  type ConsulIndex = ConsulIndex.Type
+  type WaitPeriod = WaitPeriod.Type
+}
+
+package consul {
+  object ServiceName extends NewtypeWrapped[String] {
     implicit val serviceNameSegmentEncoder: Uri.Path.SegmentEncoder[ServiceName] = Uri.Path.SegmentEncoder[String].contramap(_.value)
   }
 
-  @newtype case class ConsulIndex(index: String)
-  object ConsulIndex {
+  object ConsulIndex extends NewtypeWrapped[String] {
     implicit val consulIndexHeader: Header[ConsulIndex, Single] = Header.create(
       ci"X-Consul-Index",
-      _.index,
+      _.value,
       ConsulIndex(_).asRight
     )
     implicit val consulIndexQueryParam: QueryParam[ConsulIndex] = QueryParam.fromKey("index")
-    implicit val consulIndexQueryParamEncoder: QueryParamEncoder[ConsulIndex] = QueryParamEncoder[String].contramap(_.index)
+    implicit val consulIndexQueryParamEncoder: QueryParamEncoder[ConsulIndex] = QueryParamEncoder[String].contramap(_.value)
   }
 
-  @newtype case class WaitPeriod(maximum: FiniteDuration)
-  object WaitPeriod {
+  object WaitPeriod extends NewtypeWrapped[FiniteDuration] {
     implicit val waitQueryParam: QueryParam[WaitPeriod] = QueryParam.fromKey("wait")
-    implicit val waitQueryParamEncoder: QueryParamEncoder[WaitPeriod] = QueryParamEncoder[String].contramap(d => s"${d.maximum.toSeconds}s")
+    implicit val waitQueryParamEncoder: QueryParamEncoder[WaitPeriod] = QueryParamEncoder[String].contramap(d => s"${d.value.toSeconds}s")
   }
 
   /**
    * This newtype exists to introduce friction. It makes it harder to accidentally
    * evaluate the effect of getting the current value from a Signal.
    */
-  @newtype case class GetCurrentValue[F[_], A](fa: F[A])
-
+  case class GetCurrentValue[F[_], A](fa: F[A])
   object GetCurrentValue {
     def liftK[F[_]]: F ~> GetCurrentValue[F, *] = new (F ~> GetCurrentValue[F, *]) {
       override def apply[A](fa: F[A]): GetCurrentValue[F, A] = GetCurrentValue(fa)

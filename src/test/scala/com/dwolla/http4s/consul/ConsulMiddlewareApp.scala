@@ -31,6 +31,7 @@ class ConsulMiddlewareApp[F[_] : Async] extends Http4sClientDsl[F] {
             })
             .metered(2.seconds)
         } yield ())
+          .take(1)
           .compile
           .drain
       }
@@ -48,7 +49,7 @@ object ConsulMiddlewareApp extends IOApp.Simple {
   private def consulServiceDiscoveryAlg[F[_] : Async : Logger : Random]: Resource[F, ConsulServiceDiscoveryAlg[F]] =
     longPollClient[F].map(ConsulServiceDiscoveryAlg(uri"http://localhost:8500", 1.minute, _))
 
-  private def longPollClient[F[_] : Async]: Resource[F, Client[F]] = clientWithTimeout(10.minutes)
+  private def longPollClient[F[_] : Async]: Resource[F, Client[F]] = clientWithTimeout(75.seconds)
 
   private def normalClient[F[_] : Async]: Resource[F, Client[F]] = clientWithTimeout(20.seconds)
 
@@ -56,6 +57,7 @@ object ConsulMiddlewareApp extends IOApp.Simple {
     EmberClientBuilder
       .default[F]
       .withTimeout(timeout)
+      .withIdleConnectionTime(timeout)
       .build
 
 }

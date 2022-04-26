@@ -43,8 +43,8 @@ object ConsulService {
         case (((a, b), c), d) => ConsulService(a.getOrElse(UUID.randomUUID()), b, c, d)
       }
 
-  val consulServiceId: Parser[UUID] =
-    Space ~> uuid
+  val consulServiceId: Parser[String] =
+    Space ~> token(NotSpace, "<Service ID>")
 }
 
 object ConsulPlugin extends AutoPlugin {
@@ -109,7 +109,7 @@ object RegisterWithConsul {
 }
 
 object DeregisterFromConsul {
-  def apply(id: UUID, consulBase: Uri, client: Client[IO])
+  def apply(id: String, consulBase: Uri, client: Client[IO])
            (implicit log: SbtUtilLogger): Unit = {
     import org.http4s.circe.jsonEncoder
 
@@ -121,7 +121,7 @@ object DeregisterFromConsul {
 
 trait ConsulRegistrationAlgebra[F[_]] {
   def register(service: ConsulService): F[Unit]
-  def deregister(id: UUID): F[Unit]
+  def deregister(id: String): F[Unit]
 }
 
 object ConsulRegistrationAlgebra {
@@ -152,8 +152,8 @@ object ConsulRegistrationAlgebra {
       successOrRaise(client)(PUT(service.asJson, consulApiBaseUri / "v1" / "agent" / "service" / "register")) >>
         Logger[F].info(s"registered $service with Consul at $consulApiBaseUri")
 
-    override def deregister(id: UUID): F[Unit] =
-      successOrRaise(client)(PUT(consulApiBaseUri / "v1" / "agent" / "service" / "deregister" / id.toString)) >>
+    override def deregister(id: String): F[Unit] =
+      successOrRaise(client)(PUT(consulApiBaseUri / "v1" / "agent" / "service" / "deregister" / id)) >>
         Logger[F].info(s"deregistered $id from Consul at $consulApiBaseUri")
   }
 }
