@@ -52,7 +52,7 @@ lazy val `http4s-consul-middleware` = (project in file("."))
         "org.http4s" %% "http4s-circe" % http4sVersion,
         "io.circe" %% "circe-optics" % circeVersion,
         "io.circe" %% "circe-literal" % circeVersion,
-        "io.monix" %% "newtypes-core" % "0.2.1",
+        "io.monix" %% "newtypes-core" % "0.2.3",
         "org.typelevel" %% "log4cats-core" % log4catsVersion,
         "org.typelevel" %% "keypool" % "0.4.7",
         "co.fs2" %% "fs2-core" % "3.2.7",
