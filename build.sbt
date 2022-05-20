@@ -40,7 +40,7 @@ lazy val `http4s-consul-middleware` = (project in file("."))
   .settings(
     libraryDependencies ++= {
       val http4sVersion = "0.23.11"
-      val circeVersion = "0.14.1"
+      val circeVersion = "0.14.2"
       val log4catsVersion = "2.2.0"
       val munitVersion = "0.7.29"
       val catsVersion = "2.7.0"
@@ -50,7 +50,7 @@ lazy val `http4s-consul-middleware` = (project in file("."))
         "org.http4s" %% "http4s-core" % http4sVersion,
         "org.http4s" %% "http4s-client" % http4sVersion,
         "org.http4s" %% "http4s-circe" % http4sVersion,
-        "io.circe" %% "circe-optics" % circeVersion,
+        "io.circe" %% "circe-optics" % "0.14.1",
         "io.circe" %% "circe-literal" % circeVersion,
         "io.monix" %% "newtypes-core" % "0.2.3",
         "org.typelevel" %% "log4cats-core" % log4catsVersion,
