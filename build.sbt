@@ -58,7 +58,7 @@ lazy val `http4s-consul-middleware` = (project in file("."))
         "co.fs2" %% "fs2-core" % "3.2.7",
         "com.comcast" %% "ip4s-core" % "3.1.3",
         "com.github.julien-truffaut" %% "monocle-core" % "2.1.0",
-        "io.circe" %% "circe-core" % "0.14.1",
+        "io.circe" %% "circe-core" % "0.14.2",
         "org.typelevel" %% "case-insensitive" % "1.2.0",
         "org.typelevel" %% "cats-core" % catsVersion,
         "org.typelevel" %% "cats-kernel" % catsVersion,
