@@ -1,6 +1,6 @@
 import SbtLogger._
 import cats._
-import cats.effect.IO
+import cats.effect.{Concurrent, IO}
 import cats.effect.unsafe.implicits.global
 import cats.syntax.all._
 import io.circe.generic.semiauto.deriveCodec
@@ -125,11 +125,9 @@ trait ConsulRegistrationAlgebra[F[_]] {
 }
 
 object ConsulRegistrationAlgebra {
-  private def successOrRaise[F[_] : Functor](client: Client[F])
-                                            (req: Request[F])
-                                            (implicit E: EntityDecoder[F, Unit],
-                                             SC: fs2.Compiler[F, F],
-                                            ): F[Unit] =
+  private def successOrRaise[F[_] : Concurrent](client: Client[F])
+                                               (req: Request[F])
+                                               (implicit E: EntityDecoder[F, Unit]): F[Unit] =
     client
       .expectOr[Unit](req) { resp =>
         resp
@@ -143,11 +141,10 @@ object ConsulRegistrationAlgebra {
       }
       .void
 
-  def apply[F[_] : Monad : Logger](client: Client[F], consulApiBaseUri: Uri)
-                                  (implicit
-                                   EE: EntityEncoder[F, Json],
-                                   ED: EntityDecoder[F, Unit],
-                                   SC: fs2.Compiler[F, F]): ConsulRegistrationAlgebra[F] = new ConsulRegistrationAlgebra[F] with Http4sClientDsl[F] {
+  def apply[F[_] : Concurrent : Logger](client: Client[F], consulApiBaseUri: Uri)
+                                       (implicit
+                                        EE: EntityEncoder[F, Json],
+                                        ED: EntityDecoder[F, Unit]): ConsulRegistrationAlgebra[F] = new ConsulRegistrationAlgebra[F] with Http4sClientDsl[F] {
     override def register(service: ConsulService): F[Unit] =
       successOrRaise(client)(PUT(service.asJson, consulApiBaseUri / "v1" / "agent" / "service" / "register")) >>
         Logger[F].info(s"registered $service with Consul at $consulApiBaseUri")
