@@ -39,7 +39,7 @@ ThisBuild / githubWorkflowPublish := Seq(
 lazy val `http4s-consul-middleware` = (project in file("."))
   .settings(
     libraryDependencies ++= {
-      val http4sVersion = "0.23.11"
+      val http4sVersion = "0.23.12"
       val circeVersion = "0.14.2"
       val log4catsVersion = "2.3.1"
       val munitVersion = "0.7.29"
