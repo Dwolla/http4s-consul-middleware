@@ -43,7 +43,7 @@ lazy val `http4s-consul-middleware` = (project in file("."))
       val circeVersion = "0.14.2"
       val log4catsVersion = "2.3.1"
       val munitVersion = "0.7.29"
-      val catsVersion = "2.7.0"
+      val catsVersion = "2.8.0"
       val catsEffectVersion = "3.3.12"
 
       Seq(
