@@ -65,7 +65,7 @@ lazy val `http4s-consul-middleware` = (project in file("."))
         "org.typelevel" %% "cats-effect" % catsEffectVersion,
         "org.typelevel" %% "cats-effect-kernel" % catsEffectVersion,
         "org.typelevel" %% "cats-effect-std" % catsEffectVersion,
-        "org.typelevel" %% "vault" % "3.1.0",
+        "org.typelevel" %% "vault" % "3.2.1",
         "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.17.2" % Test,
         "org.typelevel" %% "log4cats-slf4j" % log4catsVersion % Test,
         "org.typelevel" %% "log4cats-noop" % log4catsVersion % Test,
