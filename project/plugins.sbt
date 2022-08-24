@@ -3,7 +3,7 @@ addSbtPlugin("com.github.sbt" % "sbt-ci-release" % "1.5.10")
 addSbtPlugin("com.codecommit" % "sbt-github-actions" % "0.14.2")
 
 libraryDependencies ++= {
-  val http4sVersion = "0.23.14"
+  val http4sVersion = "0.23.15"
 
   Seq(
     "org.http4s" %% "http4s-ember-client" % http4sVersion,
