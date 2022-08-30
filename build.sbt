@@ -36,7 +36,7 @@ ThisBuild / githubWorkflowPublish := Seq(
 
 lazy val log4catsVersion = "2.4.0"
 
-lazy val `consul-background-resolver` = (projectMatrix in file("core"))
+lazy val `http4s-consul-middleware` = (projectMatrix in file("core"))
   .jvmPlatform(scalaVersions, settings = Seq(
     libraryDependencies ++= {
       Seq(
@@ -47,58 +47,35 @@ lazy val `consul-background-resolver` = (projectMatrix in file("core"))
   ))
   .jsPlatform(scalaVersions)
   .settings(
-    description := "cats-effect resource to background long-poll Consul for the current set of available services",
+    description := "http4s middleware to discover the host and port for an HTTP request using Consul",
+    tpolecatScalacOptions += ScalacOptions.release("8"),
     libraryDependencies ++= {
       val http4sVersion = "0.23.15"
-      val circeVersion = "0.14.2"
       val munitVersion = "0.7.29"
-      val catsVersion = "2.8.0"
-      val catsEffectVersion = "3.3.14"
 
       Seq(
-        "org.http4s" %%% "http4s-core" % http4sVersion,
         "org.http4s" %%% "http4s-client" % http4sVersion,
         "org.http4s" %%% "http4s-circe" % http4sVersion,
         "io.circe" %%% "circe-optics" % "0.14.1",
-        "io.circe" %%% "circe-literal" % circeVersion,
+        "io.circe" %%% "circe-literal" % "0.14.2",
         "io.monix" %%% "newtypes-core" % "0.2.3",
         "org.typelevel" %%% "log4cats-core" % log4catsVersion,
         "org.typelevel" %%% "keypool" % "0.4.7",
-        "co.fs2" %%% "fs2-core" % "3.2.12",
-        "com.comcast" %%% "ip4s-core" % "3.1.3",
-        "com.github.julien-truffaut" %%% "monocle-core" % "2.1.0",
-        "io.circe" %%% "circe-core" % "0.14.2",
         "org.typelevel" %%% "case-insensitive" % "1.3.0",
-        "org.typelevel" %%% "cats-core" % catsVersion,
-        "org.typelevel" %%% "cats-kernel" % catsVersion,
-        "org.typelevel" %%% "cats-effect" % catsEffectVersion,
-        "org.typelevel" %%% "cats-effect-kernel" % catsEffectVersion,
-        "org.typelevel" %%% "cats-effect-std" % catsEffectVersion,
-        "org.typelevel" %%% "vault" % "3.2.1",
+        "org.typelevel" %%% "cats-effect" % "3.3.14",
         "org.typelevel" %%% "log4cats-noop" % log4catsVersion % Test,
         "org.http4s" %%% "http4s-ember-client" % http4sVersion % Test,
         "org.http4s" %%% "http4s-dsl" % http4sVersion % Test,
         "org.http4s" %%% "http4s-laws" % http4sVersion % Test,
         "org.scalameta" %%% "munit" % munitVersion % Test,
         "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
-        "org.typelevel" %%% "cats-laws" % catsVersion % Test,
-        "org.typelevel" %%% "discipline-munit" % "1.0.9" % Test,
       )
     },
   )
 
-lazy val `http4s-consul-middleware` = (projectMatrix in file("middleware"))
-  .jvmPlatform(scalaVersions)
-  .jsPlatform(scalaVersions)
-  .settings(
-    description := "http4s middleware to discover the host and port for an HTTP request using Consul",
-  )
-  .dependsOn(`consul-background-resolver`)
-
 lazy val root = (project in file("."))
   .aggregate(
     Seq(
-      `consul-background-resolver`,
       `http4s-consul-middleware`,
     ).flatMap(_.projectRefs): _*
   )

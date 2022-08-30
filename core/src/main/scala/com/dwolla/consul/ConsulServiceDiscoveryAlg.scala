@@ -20,38 +20,39 @@ import scala.concurrent.duration._
 trait ConsulServiceDiscoveryAlg[F[_]] {
   /**
    * Starts a background process that will continually refresh the set of available instances of the given service.
-   * The background process will live as long as the `cats.effect.Resource[F, GetCurrentValue[F, Vector[Uri.Authority]]]` is in scope.
+   * The background process will live as long as the `cats.effect.Resource[F, F[Vector[Uri.Authority]]]` is in scope.
    *
-   * @return a `cats.effect.Resource[F, GetCurrentValue[F, Vector[Uri.Authority]]]` containing an effect that, when executed, contains the current set of available instances
+   * @return a `cats.effect.Resource[F, F[Vector[Uri.Authority]]]` containing an effect that, when executed, contains the current set of available instances
    */
-  def authoritiesForService(serviceName: ServiceName): Resource[F, GetCurrentValue[F, Vector[Uri.Authority]]]
+  def authoritiesForService(serviceName: ServiceName): Resource[F, F[Vector[Uri.Authority]]]
 
   /**
    * Using [[authoritiesForService]] as the source of available instances, picks one at random to return each time the
-   * [[GetCurrentValue]] effect is executed.
+   * `F[Uri.Authority]` effect is executed.
    *
-   * @return a `cats.effect.Resource[F, GetCurrentValue[F, Uri.Authority]]` containing an effect that, when executed, contains a randomly selected instance, taken from the current set of available instances
+   * @return a `cats.effect.Resource[F, F[Uri.Authority]]` containing an effect that, when executed, contains a randomly selected instance, taken from the current set of available instances
    */
-  def authorityForService(serviceName: ServiceName): Resource[F, GetCurrentValue[F, Uri.Authority]]
+  def authorityForService(serviceName: ServiceName): Resource[F, F[Uri.Authority]]
 }
 
 object ConsulServiceDiscoveryAlg {
   def apply[F[_] : Async : Logger : Random](consulBaseUri: Uri,
                                             longPollTimeout: FiniteDuration,
                                             client: Client[F]): ConsulServiceDiscoveryAlg[F] = new ConsulServiceDiscoveryAlg[F] {
-    override def authoritiesForService(serviceName: ServiceName): Resource[F, GetCurrentValue[F, Vector[Uri.Authority]]] =
-      (for {
-        (initialValue, initialConsulIndex) <- lookup[F](serviceName, consulBaseUri, None, longPollTimeout, client).toResource
-        currentValue <- continuallyUpdating(serviceName, initialValue, initialConsulIndex, consulBaseUri, longPollTimeout, client).map(GetCurrentValue(_))
-      } yield currentValue)
-        .flatTap(_ => Resource.unit.onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)")))
+    override def authoritiesForService(serviceName: ServiceName): Resource[F, F[Vector[Uri.Authority]]] =
+      lookup[F](serviceName, consulBaseUri, None, longPollTimeout, client)
+        .toResource
+        .flatMap { case (initialValue, initialConsulIndex) =>
+          continuallyUpdating(serviceName, initialValue, initialConsulIndex, consulBaseUri, longPollTimeout, client)
+        }
+        .onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)"))
 
-    override def authorityForService(serviceName: ServiceName): Resource[F, GetCurrentValue[F, Uri.Authority]] =
+    override def authorityForService(serviceName: ServiceName): Resource[F, F[Uri.Authority]] =
       authoritiesForService(serviceName)
         .map { getCurrentValue =>
           for {
             services <- getCurrentValue
-            randomIndex <- Random[GetCurrentValue[F, *]].betweenInt(0, services.length)
+            randomIndex <- Random[F].betweenInt(0, services.length)
           } yield services(randomIndex)
         }
   }
