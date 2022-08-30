@@ -1,10 +1,10 @@
-package com.dwolla.http4s.consul
+package com.dwolla.consul
 
 import cats.effect._
 import cats.effect.std.Random
 import cats.effect.syntax.all._
 import cats.syntax.all._
-import com.dwolla.http4s.consul.ThirdPartyTypeCodecs._
+import com.dwolla.consul.ThirdPartyTypeCodecs._
 import fs2.Stream
 import io.circe.optics.JsonPath.root
 import io.circe.{Decoder, Json}

@@ -9,6 +9,7 @@ import org.http4s.client._
 import org.http4s.syntax.all._
 import org.typelevel.keypool.KeyPool
 import org.typelevel.log4cats.Logger
+import com.dwolla.consul._
 
 object ConsulMiddleware {
   /**

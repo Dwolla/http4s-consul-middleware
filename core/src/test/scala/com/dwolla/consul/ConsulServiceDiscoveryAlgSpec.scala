@@ -1,7 +1,7 @@
-package com.dwolla.http4s.consul
+package com.dwolla.consul
 
 import cats.syntax.all._
-import com.dwolla.http4s.consul.arbitraries._
+import com.dwolla.consul.arbitraries._
 import munit.ScalaCheckSuite
 import org.http4s.Uri
 import org.http4s.laws.discipline.arbitrary.http4sTestingArbitraryForUri

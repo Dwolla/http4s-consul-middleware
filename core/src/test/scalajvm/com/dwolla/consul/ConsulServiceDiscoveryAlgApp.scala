@@ -1,4 +1,4 @@
-package com.dwolla.http4s.consul
+package com.dwolla.consul
 
 import cats.effect._
 import cats.syntax.all._

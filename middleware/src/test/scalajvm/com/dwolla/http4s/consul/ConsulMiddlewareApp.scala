@@ -4,6 +4,7 @@ import cats.effect._
 import cats.syntax.all._
 import cats.effect.std.Random
 import com.dwolla.http4s.consul.ConsulMiddlewareApp.consulAwareClient
+import com.dwolla.consul._
 import fs2.Stream
 import org.http4s.Method.GET
 import org.http4s._

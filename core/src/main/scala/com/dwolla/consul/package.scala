@@ -1,4 +1,4 @@
-package com.dwolla.http4s
+package com.dwolla
 
 import cats._
 import cats.effect.std.Random
