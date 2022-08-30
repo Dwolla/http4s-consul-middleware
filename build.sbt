@@ -1,5 +1,5 @@
-lazy val scalaVersions = Seq("2.13.8")
-
+ThisBuild / crossScalaVersions := Seq("2.13.8")
+ThisBuild / scalaVersion := crossScalaVersions.value.head
 ThisBuild / organization := "com.dwolla"
 ThisBuild / homepage := Some(url("https://github.com/Dwolla/http4s-consul-middleware"))
 ThisBuild / licenses += ("MIT", url("https://opensource.org/licenses/MIT"))
@@ -16,19 +16,31 @@ ThisBuild / libraryDependencies ++= Seq(
   compilerPlugin("org.typelevel" %% "kind-projector" % "0.13.2" cross CrossVersion.full),
   compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
 )
+tpolecatScalacOptions += ScalacOptions.release("8")
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
+ThisBuild / tlCiReleaseBranches := Seq("main")
+ThisBuild / tlBaseVersion := "0.1"
+ThisBuild / tlSonatypeUseLegacyHost := false
+ThisBuild / mergifyStewardConfig ~= {
+  _.map(_.copy(mergeMinors = true, author = "dwolla-oss-scala-steward[bot]"))
+}
+ThisBuild / mergifySuccessConditions += MergifyCondition.Custom("#approved-reviews-by>=1")
+ThisBuild / mergifyPrRules += MergifyPrRule(
+  "assign scala-steward's PRs for review",
+  List(MergifyCondition.Or(List(
+    MergifyCondition.Custom("author=dwolla-oss-scala-steward[bot]"),
+    MergifyCondition.Custom("author=scala-steward"),
+  ))),
+  List(
+    MergifyAction.RequestReviews(developers.value)
+  )
+)
 
 lazy val log4catsVersion = "2.4.0"
 
-lazy val `http4s-consul-middleware` = (projectMatrix in file("core"))
-  .jvmPlatform(scalaVersions, settings = Seq(
-    libraryDependencies ++= {
-      Seq(
-        "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.18.0" % Test,
-        "org.typelevel" %% "log4cats-slf4j" % log4catsVersion % Test,
-      )
-    }
-  ))
-  .jsPlatform(scalaVersions)
+lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Full)
+  .in(file("core"))
   .settings(
     description := "http4s middleware to discover the host and port for an HTTP request using Consul",
     tpolecatScalacOptions += ScalacOptions.release("8"),
@@ -54,15 +66,4 @@ lazy val `http4s-consul-middleware` = (projectMatrix in file("core"))
         "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
       )
     },
-  )
-
-lazy val root = (project in file("."))
-  .aggregate(
-    Seq(
-      `http4s-consul-middleware`,
-    ).flatMap(_.projectRefs): _*
-  )
-  .settings(
-    publishArtifact := false,
-    publish / skip := true
   )

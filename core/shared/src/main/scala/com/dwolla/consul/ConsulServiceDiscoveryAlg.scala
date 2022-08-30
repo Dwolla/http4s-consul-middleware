@@ -121,7 +121,7 @@ object ConsulServiceDiscoveryAlg {
     Stream.unfoldEval(initialConsulIndex) { maybeIndex =>
       lookup[F](serviceName, consulBase, maybeIndex, longPollTimeout, client)
         .map(_.leftMap(_.some))                               // if we successfully got values, wrap them in Some so we can unNone later
-        .recoverWith {
+        .handleErrorWith {
           // TODO maybe we should introduce some kind of escalating delay here?
           Logger[F].warn(_)("🔥 An exception occurred getting service details from Consul; retrying")
             .as((none[Vector[Uri.Authority]], maybeIndex))    // continue successfully, but emit None so the failure can be filtered out later
