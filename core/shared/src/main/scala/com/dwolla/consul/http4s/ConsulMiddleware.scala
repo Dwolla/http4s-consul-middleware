@@ -1,0 +1,37 @@
+package com.dwolla.consul.http4s
+
+import cats.effect._
+import cats.effect.syntax.all._
+import com.dwolla.consul._
+import org.http4s._
+import org.http4s.client._
+import org.typelevel.log4cats.Logger
+
+object ConsulMiddleware {
+  /**
+   * Returns a new `org.http4s.client.Client[F]` that will rewrite URIs of the
+   * form `consul://{service}` by looking up the `service` using Consul's
+   * HTTP API.
+   *
+   * This uses a `KeyPool` and [[ConsulServiceDiscoveryAlg]] to monitor changes
+   * to the list of services in Consul in the background, so that requests after
+   * the first one are made quickly and don't have to wait for a Consul lookup
+   * before a URI can be rewritten.
+   *
+   * @param consulServiceDiscoveryAlg: the [[ConsulServiceDiscoveryAlg]] used to construct the background processes
+   * @param client the `org.http4s.client.Client[F]` being wrapped, which will be used to make the eventual service requests
+   */
+  def apply[F[_] : Async : Logger](consulServiceDiscoveryAlg: ConsulServiceDiscoveryAlg[F])
+                                  (client: Client[F]): Resource[F, Client[F]] =
+    ConsulUriResolver(consulServiceDiscoveryAlg)
+      .map { resolver: ConsulUriResolver[F] =>
+        Client { req: Request[F] =>
+          resolver.resolve(req.uri)
+            .toResource
+            .flatMap { uri =>
+              client.run(req.withUri(uri))
+            }
+        }
+      }
+      .onFinalize(Logger[F].trace("👋 shutting down ConsulMiddleware"))
+}

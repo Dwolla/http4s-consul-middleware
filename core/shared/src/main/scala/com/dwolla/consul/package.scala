@@ -1,7 +1,5 @@
-package com.dwolla.http4s
+package com.dwolla
 
-import cats._
-import cats.effect.std.Random
 import cats.syntax.all._
 import monix.newtypes.NewtypeWrapped
 import org.http4s.Header.Single
@@ -38,33 +36,5 @@ package consul {
   object WaitPeriod extends NewtypeWrapped[FiniteDuration] {
     implicit val waitQueryParam: QueryParam[WaitPeriod] = QueryParam.fromKey("wait")
     implicit val waitQueryParamEncoder: QueryParamEncoder[WaitPeriod] = QueryParamEncoder[String].contramap(d => s"${d.value.toSeconds}s")
-  }
-
-  /**
-   * This newtype exists to introduce friction. It makes it harder to accidentally
-   * evaluate the effect of getting the current value from a Signal.
-   */
-  case class GetCurrentValue[F[_], A](fa: F[A])
-  object GetCurrentValue {
-    def liftK[F[_]]: F ~> GetCurrentValue[F, *] = new (F ~> GetCurrentValue[F, *]) {
-      override def apply[A](fa: F[A]): GetCurrentValue[F, A] = GetCurrentValue(fa)
-    }
-
-    implicit def GetCurrentValueMonad[F[_] : Monad]: Monad[GetCurrentValue[F, *]] = new Monad[GetCurrentValue[F, *]] {
-      override def flatMap[A, B](gcv: GetCurrentValue[F, A])
-                                (f: A => GetCurrentValue[F, B]): GetCurrentValue[F, B] =
-        GetCurrentValue(gcv.fa.flatMap(f(_).fa))
-
-      override def tailRecM[A, B](a: A)
-                                 (f: A => GetCurrentValue[F, Either[A, B]]): GetCurrentValue[F, B] =
-        GetCurrentValue(Monad[F].tailRecM(a)(f(_).fa))
-
-      override def pure[A](x: A): GetCurrentValue[F, A] =
-        GetCurrentValue(x.pure[F])
-    }
-
-    implicit def GetCurrentValueEq[F[_], A](implicit F: Eq[F[A]]): Eq[GetCurrentValue[F, A]] = Eq.by(_.fa)
-
-    implicit def GetCurrentValueRandom[F[_] : Random]: Random[GetCurrentValue[F, *]] = Random[F].mapK(liftK)
   }
 }

@@ -1,4 +1,4 @@
-package com.dwolla.http4s.consul
+package com.dwolla.consul
 
 import cats.syntax.all._
 import com.comcast.ip4s

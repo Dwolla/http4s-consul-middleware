@@ -1,4 +1,4 @@
-package com.dwolla.http4s.consul
+package com.dwolla.consul
 
 import cats.effect._
 import cats.syntax.all._
@@ -30,7 +30,7 @@ object ConsulServiceDiscoveryAlgApp extends IOApp.Simple with Http4sClientDsl[IO
             Stream
               .resource(Logger[Resource[IO, *]].info(s"🔭 checking service ${serviceName.value}") >> alg.authoritiesForService(serviceName))
               .flatMap { s =>
-                Stream.eval(s.fa)
+                Stream.eval(s)
                   .repeatN(5)
                   .metered(5.seconds)
                   .changes
