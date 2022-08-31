@@ -1,7 +1,6 @@
 import SbtLogger._
-import cats._
-import cats.effect.{Concurrent, IO}
 import cats.effect.unsafe.implicits.global
+import cats.effect.{Concurrent, IO}
 import cats.syntax.all._
 import io.circe.generic.semiauto.deriveCodec
 import io.circe.syntax.EncoderOps
@@ -61,7 +60,7 @@ object ConsulPlugin extends AutoPlugin {
 
   override def requires: Plugins = empty
 
-  override lazy val projectSettings = Seq(
+  override lazy val globalSettings = Seq(
     http4sClient := Def.setting {
       implicit val l: SbtUtilLogger = Keys.sLog.value
 
