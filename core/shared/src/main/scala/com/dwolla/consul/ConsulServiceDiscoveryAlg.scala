@@ -43,7 +43,7 @@ object ConsulServiceDiscoveryAlg {
     LoggerFactory[F]
       .create(LoggerName("com.dwolla.consul.ConsulServiceDiscoveryAlg"))
       .map { implicit l =>
-        new ConsulServiceDiscoveryAlg[F] {
+        new AbstractConsulServiceDiscoveryAlg[F] {
           override def authoritiesForService(serviceName: ServiceName): Resource[F, F[Vector[Uri.Authority]]] =
             lookup[F](serviceName, consulBaseUri, None, longPollTimeout, client)
               .toResource
@@ -51,15 +51,6 @@ object ConsulServiceDiscoveryAlg {
                 continuallyUpdating(serviceName, initialValue, initialConsulIndex, consulBaseUri, longPollTimeout, client)
               }
               .onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)"))
-
-          override def authorityForService(serviceName: ServiceName): Resource[F, F[Uri.Authority]] =
-            authoritiesForService(serviceName)
-              .map { getCurrentValue =>
-                for {
-                  services <- getCurrentValue
-                  randomIndex <- Random[F].betweenInt(0, services.length)
-                } yield services(randomIndex)
-              }
         }
       }
 
@@ -147,6 +138,17 @@ object ConsulServiceDiscoveryAlg {
     consulBase / "v1" / "health" / "service" / serviceName +? OnlyHealthyServices +?? index +?? index.as(WaitPeriod(longPollTimeout))
 
   private implicit def jsonEntityDecoder[F[_] : Concurrent, A: Decoder]: EntityDecoder[F, A] = jsonOf[F, A]
+}
+
+abstract class AbstractConsulServiceDiscoveryAlg[F[_] : Random : Monad] extends ConsulServiceDiscoveryAlg[F] {
+  override def authorityForService(serviceName: ServiceName): Resource[F, F[Uri.Authority]] =
+    authoritiesForService(serviceName)
+      .map { getCurrentValue =>
+        for {
+          services <- getCurrentValue
+          randomIndex <- Random[F].betweenInt(0, services.length)
+        } yield services(randomIndex)
+      }
 }
 
 object AnsiColorCodes {
