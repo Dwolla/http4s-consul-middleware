@@ -5,7 +5,7 @@ import cats.effect.syntax.all._
 import com.dwolla.consul._
 import org.http4s._
 import org.http4s.client._
-import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats._
 
 object ConsulMiddleware {
   /**
@@ -21,17 +21,22 @@ object ConsulMiddleware {
    * @param consulServiceDiscoveryAlg: the [[ConsulServiceDiscoveryAlg]] used to construct the background processes
    * @param client the `org.http4s.client.Client[F]` being wrapped, which will be used to make the eventual service requests
    */
-  def apply[F[_] : Async : Logger](consulServiceDiscoveryAlg: ConsulServiceDiscoveryAlg[F])
-                                  (client: Client[F]): Resource[F, Client[F]] =
-    ConsulUriResolver(consulServiceDiscoveryAlg)
-      .map { resolver: ConsulUriResolver[F] =>
-        Client { req: Request[F] =>
-          resolver.resolve(req.uri)
-            .toResource
-            .flatMap { uri =>
-              client.run(req.withUri(uri))
+  def apply[F[_] : Async : LoggerFactory](consulServiceDiscoveryAlg: ConsulServiceDiscoveryAlg[F])
+                                         (client: Client[F]): Resource[F, Client[F]] =
+    LoggerFactory[F]
+      .create(LoggerName("com.dwolla.consul.http4s.ConsulMiddleware"))
+      .toResource
+      .flatMap { implicit l =>
+        ConsulUriResolver(consulServiceDiscoveryAlg)
+          .map { resolver: ConsulUriResolver[F] =>
+            Client { req: Request[F] =>
+              resolver.resolve(req.uri)
+                .toResource
+                .flatMap { uri =>
+                  client.run(req.withUri(uri))
+                }
             }
-        }
+          }
+          .onFinalize(Logger[F].trace("👋 shutting down ConsulMiddleware"))
       }
-      .onFinalize(Logger[F].trace("👋 shutting down ConsulMiddleware"))
 }

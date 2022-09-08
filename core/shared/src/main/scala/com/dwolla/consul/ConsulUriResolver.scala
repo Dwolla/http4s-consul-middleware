@@ -1,24 +1,30 @@
 package com.dwolla.consul
 
 import cats.effect._
+import cats.effect.implicits.effectResourceOps
 import cats.syntax.all._
 import org.http4s.Uri.Host
 import org.http4s._
 import org.http4s.syntax.all._
 import org.typelevel.keypool.KeyPool
-import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.{Logger, LoggerFactory, LoggerName}
 
 trait ConsulUriResolver[F[_]] {
   def resolve(uri: Uri): F[Uri]
 }
 
 object ConsulUriResolver {
-  def apply[F[_] : Async : Logger](backgroundResolver: ConsulServiceDiscoveryAlg[F]): Resource[F, ConsulUriResolver[F]] =
-    KeyPool.Builder(backgroundResolver.authorityForService)
-      .build
-      .map(ConsulUriResolver(_))
+  def apply[F[_] : Async : LoggerFactory](backgroundResolver: ConsulServiceDiscoveryAlg[F]): Resource[F, ConsulUriResolver[F]] =
+    LoggerFactory[F]
+      .create(LoggerName("com.dwolla.consul.ConsulUriResolver"))
+      .toResource
+      .flatMap { implicit l =>
+        KeyPool.Builder(backgroundResolver.authorityForService)
+          .build
+          .map(ConsulUriResolver(_))
+      }
 
-  def apply[F[_] : Async : Logger](backgroundResolver: KeyPool[F, ServiceName, F[Uri.Authority]]): ConsulUriResolver[F] =
+  private[consul] def apply[F[_] : Async : Logger](backgroundResolver: KeyPool[F, ServiceName, F[Uri.Authority]]): ConsulUriResolver[F] =
     new ConsulUriResolver[F] {
       override def resolve(uri: Uri): F[Uri] = uri match {
         case Uri(Some(scheme), Some(Uri.Authority(_, service, _)), _, _, _) if scheme == scheme"consul" =>

@@ -1,5 +1,6 @@
 package com.dwolla.consul
 
+import cats.Monad
 import cats.effect._
 import cats.effect.std.Random
 import cats.effect.syntax.all._
@@ -13,7 +14,7 @@ import org.http4s.Method.GET
 import org.http4s._
 import org.http4s.circe.jsonOf
 import org.http4s.client._
-import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats._
 
 import scala.concurrent.duration._
 
@@ -36,26 +37,31 @@ trait ConsulServiceDiscoveryAlg[F[_]] {
 }
 
 object ConsulServiceDiscoveryAlg {
-  def apply[F[_] : Async : Logger : Random](consulBaseUri: Uri,
-                                            longPollTimeout: FiniteDuration,
-                                            client: Client[F]): ConsulServiceDiscoveryAlg[F] = new ConsulServiceDiscoveryAlg[F] {
-    override def authoritiesForService(serviceName: ServiceName): Resource[F, F[Vector[Uri.Authority]]] =
-      lookup[F](serviceName, consulBaseUri, None, longPollTimeout, client)
-        .toResource
-        .flatMap { case (initialValue, initialConsulIndex) =>
-          continuallyUpdating(serviceName, initialValue, initialConsulIndex, consulBaseUri, longPollTimeout, client)
-        }
-        .onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)"))
+  def apply[F[_] : Temporal : LoggerFactory : Random](consulBaseUri: Uri,
+                                                      longPollTimeout: FiniteDuration,
+                                                      client: Client[F]): F[ConsulServiceDiscoveryAlg[F]] =
+    LoggerFactory[F]
+      .create(LoggerName("com.dwolla.consul.ConsulServiceDiscoveryAlg"))
+      .map { implicit l =>
+        new ConsulServiceDiscoveryAlg[F] {
+          override def authoritiesForService(serviceName: ServiceName): Resource[F, F[Vector[Uri.Authority]]] =
+            lookup[F](serviceName, consulBaseUri, None, longPollTimeout, client)
+              .toResource
+              .flatMap { case (initialValue, initialConsulIndex) =>
+                continuallyUpdating(serviceName, initialValue, initialConsulIndex, consulBaseUri, longPollTimeout, client)
+              }
+              .onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)"))
 
-    override def authorityForService(serviceName: ServiceName): Resource[F, F[Uri.Authority]] =
-      authoritiesForService(serviceName)
-        .map { getCurrentValue =>
-          for {
-            services <- getCurrentValue
-            randomIndex <- Random[F].betweenInt(0, services.length)
-          } yield services(randomIndex)
+          override def authorityForService(serviceName: ServiceName): Resource[F, F[Uri.Authority]] =
+            authoritiesForService(serviceName)
+              .map { getCurrentValue =>
+                for {
+                  services <- getCurrentValue
+                  randomIndex <- Random[F].betweenInt(0, services.length)
+                } yield services(randomIndex)
+              }
         }
-  }
+      }
 
   private val serviceLens: Traversal[Json, Uri.Authority] =
     root.each.Service.as[Uri.Authority]
@@ -70,12 +76,12 @@ object ConsulServiceDiscoveryAlg {
    * @param client the `org.http4s.client.Client[F]` used to interact with the Consul API. Should be configured not to timeout on blocking queries
    * @return a `Vector` containing the currently available instances of the service, and optionally the Consul state index
    */
-  private def lookup[F[_] : Async : Logger](serviceName: ServiceName,
-                                            consulBase: Uri,
-                                            index: Option[ConsulIndex],
-                                            longPollTimeout: FiniteDuration,
-                                            client: Client[F],
-                                           ): F[(Vector[Uri.Authority], Option[ConsulIndex])] = {
+  private def lookup[F[_] : Temporal : Logger](serviceName: ServiceName,
+                                               consulBase: Uri,
+                                               index: Option[ConsulIndex],
+                                               longPollTimeout: FiniteDuration,
+                                               client: Client[F],
+                                              ): F[(Vector[Uri.Authority], Option[ConsulIndex])] = {
     val requestUri = serviceListUri(consulBase, serviceName, index, longPollTimeout)
 
     Logger[F].trace(s"📡 getting services for $serviceName from $requestUri") >>
@@ -112,12 +118,12 @@ object ConsulServiceDiscoveryAlg {
    * @param client the `org.http4s.client.Client[F]` used to interact with the Consul API. Should be configured not to timeout on blocking queries
    * @return a `cats.effect.Resource` managing the background process and containing an effect to view the current set of available instances
    */
-  private def continuallyUpdating[F[_] : Async : Logger](serviceName: ServiceName,
-                                                         initialValue: Vector[Uri.Authority],
-                                                         initialConsulIndex: Option[ConsulIndex],
-                                                         consulBase: Uri,
-                                                         longPollTimeout: FiniteDuration,
-                                                         client: Client[F]): Resource[F, F[Vector[Uri.Authority]]] =
+  private def continuallyUpdating[F[_] : Temporal : Logger](serviceName: ServiceName,
+                                                            initialValue: Vector[Uri.Authority],
+                                                            initialConsulIndex: Option[ConsulIndex],
+                                                            consulBase: Uri,
+                                                            longPollTimeout: FiniteDuration,
+                                                            client: Client[F]): Resource[F, F[Vector[Uri.Authority]]] =
     Stream.unfoldEval(initialConsulIndex) { maybeIndex =>
       lookup[F](serviceName, consulBase, maybeIndex, longPollTimeout, client)
         .map(_.leftMap(_.some))                               // if we successfully got values, wrap them in Some so we can unNone later
