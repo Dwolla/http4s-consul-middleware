@@ -36,7 +36,7 @@ ThisBuild / mergifyPrRules += MergifyPrRule(
   )
 )
 
-lazy val log4catsVersion = "2.4.0"
+lazy val log4catsVersion = "2.5.0"
 
 lazy val root = tlCrossRootProject.aggregate(`http4s-consul-middleware`)
 
