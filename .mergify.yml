@@ -27,12 +27,3 @@ pull_request_rules:
       add:
       - core
       remove: []
-- name: assign scala-steward's PRs for review
-  conditions:
-  - or:
-    - author=dwolla-oss-scala-steward[bot]
-    - author=scala-steward
-  actions:
-    request_reviews:
-      users:
-      - bpholt

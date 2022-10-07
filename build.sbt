@@ -25,16 +25,6 @@ ThisBuild / mergifyStewardConfig ~= {
   _.map(_.copy(mergeMinors = true, author = "dwolla-oss-scala-steward[bot]"))
 }
 ThisBuild / mergifySuccessConditions += MergifyCondition.Custom("#approved-reviews-by>=1")
-ThisBuild / mergifyPrRules += MergifyPrRule(
-  "assign scala-steward's PRs for review",
-  List(MergifyCondition.Or(List(
-    MergifyCondition.Custom("author=dwolla-oss-scala-steward[bot]"),
-    MergifyCondition.Custom("author=scala-steward"),
-  ))),
-  List(
-    MergifyAction.RequestReviews(developers.value)
-  )
-)
 
 lazy val log4catsVersion = "2.5.0"
 
