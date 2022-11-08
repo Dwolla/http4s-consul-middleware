@@ -1,15 +1,17 @@
 package com.dwolla.consul
 
-import cats.Monad
-import cats.effect._
+import cats.effect.kernel.Resource.ExitCase
+import cats.{Monad, ~>}
 import cats.effect.std.Random
 import cats.effect.syntax.all._
+import cats.effect.{Trace => _, _}
 import cats.syntax.all._
 import com.dwolla.consul.ThirdPartyTypeCodecs._
 import fs2.Stream
 import io.circe.optics.JsonPath.root
 import io.circe.{Decoder, Json}
 import monocle.Traversal
+import natchez.Trace
 import org.http4s.Method.GET
 import org.http4s._
 import org.http4s.circe.jsonOf
@@ -18,7 +20,7 @@ import org.typelevel.log4cats._
 
 import scala.concurrent.duration._
 
-trait ConsulServiceDiscoveryAlg[F[_]] {
+trait ConsulServiceDiscoveryAlg[F[_]] { self =>
   /**
    * Starts a background process that will continually refresh the set of available instances of the given service.
    * The background process will live as long as the `cats.effect.Resource[F, F[Vector[Uri.Authority]]]` is in scope.
@@ -34,12 +36,25 @@ trait ConsulServiceDiscoveryAlg[F[_]] {
    * @return a `cats.effect.Resource[F, F[Uri.Authority]]` containing an effect that, when executed, contains a randomly selected instance, taken from the current set of available instances
    */
   def authorityForService(serviceName: ServiceName): Resource[F, F[Uri.Authority]]
+
+  def mapK[G[_]](fk: F ~> G)
+                (implicit F: MonadCancel[F, _], G: MonadCancel[G, _]): ConsulServiceDiscoveryAlg[G] = new ConsulServiceDiscoveryAlg[G] {
+    override def authoritiesForService(serviceName: ServiceName): Resource[G, G[Vector[Uri.Authority]]] =
+      self.authoritiesForService(serviceName)
+        .map(fk(_))
+        .mapK(fk)
+
+    override def authorityForService(serviceName: ServiceName): Resource[G, G[Uri.Authority]] =
+      self.authorityForService(serviceName)
+        .map(fk(_))
+        .mapK(fk)
+  }
 }
 
 object ConsulServiceDiscoveryAlg {
-  def apply[F[_] : Temporal : LoggerFactory : Random](consulBaseUri: Uri,
-                                                      longPollTimeout: FiniteDuration,
-                                                      client: Client[F]): F[ConsulServiceDiscoveryAlg[F]] =
+  def apply[F[_] : Temporal : LoggerFactory : Random : Trace](consulBaseUri: Uri,
+                                                              longPollTimeout: FiniteDuration,
+                                                              client: Client[F]): F[ConsulServiceDiscoveryAlg[F]] =
     LoggerFactory[F]
       .create(LoggerName("com.dwolla.consul.ConsulServiceDiscoveryAlg"))
       .map { implicit l =>
@@ -67,33 +82,49 @@ object ConsulServiceDiscoveryAlg {
    * @param client the `org.http4s.client.Client[F]` used to interact with the Consul API. Should be configured not to timeout on blocking queries
    * @return a `Vector` containing the currently available instances of the service, and optionally the Consul state index
    */
-  private def lookup[F[_] : Temporal : Logger](serviceName: ServiceName,
-                                               consulBase: Uri,
-                                               index: Option[ConsulIndex],
-                                               longPollTimeout: FiniteDuration,
-                                               client: Client[F],
-                                              ): F[(Vector[Uri.Authority], Option[ConsulIndex])] = {
+  private def lookup[F[_] : Temporal : Logger : Trace](serviceName: ServiceName,
+                                                       consulBase: Uri,
+                                                       index: Option[ConsulIndex],
+                                                       longPollTimeout: FiniteDuration,
+                                                       client: Client[F],
+                                                      ): F[(Vector[Uri.Authority], Option[ConsulIndex])] = {
     val requestUri = serviceListUri(consulBase, serviceName, index, longPollTimeout)
 
     Logger[F].trace(s"📡 getting services for $serviceName from $requestUri") >>
-      client
-        .run(Request[F](GET, requestUri))
-        .onFinalizeCase {
-          case Resource.ExitCase.Succeeded => Logger[F].trace(s"👋 finalized Succeeded lookup($serviceName, …).client.run")
-          case Resource.ExitCase.Errored(e) => Logger[F].trace(e)(s"👋 finalized Errored lookup($serviceName, …).client.run")
-          case Resource.ExitCase.Canceled => Logger[F].trace(s"👋 finalized Canceled lookup($serviceName, …).client.run")
-        }
-        .use { resp =>
-          Logger[F].trace(s"📠 ${AnsiColorCodes.red}Consul response ${AnsiColorCodes.reset}") >>
-            resp
-              .as[Json]
-              .map(serviceLens.getAll(_).toVector)
-              .tupleRight(resp.headers.get[ConsulIndex])
-        }
-        .timeout(longPollTimeout + 1.second)
-        .handleErrorWith { ex =>
-          Logger[F].error(ex)(s"📠 ${AnsiColorCodes.red}Consul response error ${AnsiColorCodes.reset}") >> ex.raiseError
-        }
+      Trace[F].span("com.dwolla.consul.ConsulServiceDiscoveryAlg.lookup") {
+        val req = Request[F](GET, requestUri)
+
+        Trace[F].put(
+          "serviceName" -> serviceName.value,
+          "consulBase" -> consulBase.toString(),
+          "client.http.uri" -> req.uri.toString(),
+          "client.http.method" -> req.method.toString,
+        ) >>
+          client
+            .run(req)
+            .onFinalizeCase(logFinalizeCase(serviceName))
+            .onFinalizeCase(traceFinalizeCase)
+            .use { resp =>
+              Logger[F].trace(s"📠 ${AnsiColorCodes.red}Consul response ${AnsiColorCodes.reset}") >>
+                resp
+                  .as[Json]
+                  .map(serviceLens.getAll(_).toVector)
+                  .tupleRight(resp.headers.get[ConsulIndex])
+            }
+            .timeout(longPollTimeout + 1.second)
+            .handleErrorWith { ex =>
+              Logger[F].error(ex)(s"📠 ${AnsiColorCodes.red}Consul response error ${AnsiColorCodes.reset}") >> ex.raiseError
+            }
+      }
+  }
+
+  private def traceFinalizeCase[F[_] : Trace]: ExitCase => F[Unit] =
+    exitCase => Trace[F].put("ExitCase" -> exitCase.toString)
+
+  private def logFinalizeCase[F[_] : Logger](serviceName: ServiceName): ExitCase => F[Unit] = {
+    case Resource.ExitCase.Succeeded => Logger[F].trace(s"👋 finalized Succeeded lookup($serviceName, …).client.run")
+    case Resource.ExitCase.Errored(e) => Logger[F].trace(e)(s"👋 finalized Errored lookup($serviceName, …).client.run")
+    case Resource.ExitCase.Canceled => Logger[F].trace(s"👋 finalized Canceled lookup($serviceName, …).client.run")
   }
 
   /**
@@ -116,6 +147,9 @@ object ConsulServiceDiscoveryAlg {
                                                             longPollTimeout: FiniteDuration,
                                                             client: Client[F]): Resource[F, F[Vector[Uri.Authority]]] =
     Stream.unfoldEval(initialConsulIndex) { maybeIndex =>
+      // since this is a background task, it doesn't make sense to attach it to the trace that initially started it
+      import natchez.Trace.Implicits.noop
+
       lookup[F](serviceName, consulBase, maybeIndex, longPollTimeout, client)
         .map(_.leftMap(_.some))                               // if we successfully got values, wrap them in Some so we can unNone later
         .handleErrorWith {
@@ -138,6 +172,15 @@ object ConsulServiceDiscoveryAlg {
     consulBase / "v1" / "health" / "service" / serviceName +? OnlyHealthyServices +?? index +?? index.as(WaitPeriod(longPollTimeout))
 
   private implicit def jsonEntityDecoder[F[_] : Concurrent, A: Decoder]: EntityDecoder[F, A] = jsonOf[F, A]
+
+  @deprecated("used traced version", "0.2.0")
+  def apply[F[_]](consulBaseUri: Uri,
+                  longPollTimeout: FiniteDuration,
+                  client: Client[F],
+                  F: Temporal[F],
+                  L: LoggerFactory[F],
+                  R: Random[F]): F[ConsulServiceDiscoveryAlg[F]] =
+    ConsulServiceDiscoveryAlg(consulBaseUri, longPollTimeout, client)(F, L, R, natchez.Trace.Implicits.noop(F))
 }
 
 abstract class AbstractConsulServiceDiscoveryAlg[F[_] : Random : Monad] extends ConsulServiceDiscoveryAlg[F] {

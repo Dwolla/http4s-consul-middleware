@@ -1,13 +1,14 @@
 package com.dwolla.consul
 package examples
 
-import cats.effect._
+import cats.effect.{Trace => _, _}
 import cats.effect.std.Random
 import cats.syntax.all._
 import com.dwolla.consul._
 import com.dwolla.consul.examples.ConsulMiddlewareApp.consulAwareClient
 import com.dwolla.consul.http4s.ConsulMiddleware
 import fs2.Stream
+import natchez.Trace
 import org.http4s.Method.GET
 import org.http4s._
 import org.http4s.client.Client
@@ -18,7 +19,7 @@ import org.typelevel.log4cats.{Logger, LoggerFactory}
 
 import scala.concurrent.duration._
 
-class ConsulMiddlewareApp[F[_] : Async : LoggerFactory] extends Http4sClientDsl[F] {
+class ConsulMiddlewareApp[F[_] : Async : LoggerFactory : Trace] extends Http4sClientDsl[F] {
   val exampleConsulUri: Uri = uri"consul://httpd/"
 
   def run: F[Unit] =
@@ -46,13 +47,12 @@ class ConsulMiddlewareApp[F[_] : Async : LoggerFactory] extends Http4sClientDsl[
 }
 
 object ConsulMiddlewareApp extends ConsulMiddlewareAppPlatform {
-
-  private[ConsulMiddlewareApp] def consulAwareClient[F[_] : Async : Random : LoggerFactory]: Resource[F, Client[F]] =
+  private[ConsulMiddlewareApp] def consulAwareClient[F[_] : Async : Random : LoggerFactory : Trace]: Resource[F, Client[F]] =
     (consulServiceDiscoveryAlg[F], normalClient[F])
       .parMapN(ConsulMiddleware(_)(_))
       .flatten
 
-  private def consulServiceDiscoveryAlg[F[_] : Async : Random : LoggerFactory]: Resource[F, ConsulServiceDiscoveryAlg[F]] =
+  private def consulServiceDiscoveryAlg[F[_] : Async : Random : LoggerFactory : Trace]: Resource[F, ConsulServiceDiscoveryAlg[F]] =
     longPollClient[F].evalMap(ConsulServiceDiscoveryAlg(uri"http://localhost:8500", 1.minute, _))
 
   private def longPollClient[F[_] : Async]: Resource[F, Client[F]] = clientWithTimeout(75.seconds)

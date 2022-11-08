@@ -1,8 +1,9 @@
 package com.dwolla.consul.http4s
 
-import cats.effect._
 import cats.effect.syntax.all._
+import cats.effect.{Trace => _, _}
 import com.dwolla.consul._
+import natchez.Trace
 import org.http4s._
 import org.http4s.client._
 import org.typelevel.log4cats._
@@ -21,8 +22,8 @@ object ConsulMiddleware {
    * @param consulServiceDiscoveryAlg: the [[ConsulServiceDiscoveryAlg]] used to construct the background processes
    * @param client the `org.http4s.client.Client[F]` being wrapped, which will be used to make the eventual service requests
    */
-  def apply[F[_] : Async : LoggerFactory](consulServiceDiscoveryAlg: ConsulServiceDiscoveryAlg[F])
-                                         (client: Client[F]): Resource[F, Client[F]] =
+  def apply[F[_] : Async : LoggerFactory : Trace](consulServiceDiscoveryAlg: ConsulServiceDiscoveryAlg[F])
+                                                 (client: Client[F]): Resource[F, Client[F]] =
     LoggerFactory[F]
       .create(LoggerName("com.dwolla.consul.http4s.ConsulMiddleware"))
       .toResource
@@ -39,4 +40,13 @@ object ConsulMiddleware {
           }
           .onFinalize(Logger[F].trace("👋 shutting down ConsulMiddleware"))
       }
+
+  @deprecated("used traced version", "0.2.0")
+  def apply[F[_]](consulServiceDiscoveryAlg: ConsulServiceDiscoveryAlg[F],
+                  client: Client[F],
+                  F: Async[F],
+                  L: LoggerFactory[F]): Resource[F, Client[F]] = {
+    ConsulMiddleware(consulServiceDiscoveryAlg)(client)(F, L, natchez.Trace.Implicits.noop(F))
+  }
+
 }

@@ -42,6 +42,9 @@ def consulAwareClient[F[_] : Async : Logger : Random]: Resource[F, Client[F]] =
 
 Random.scalaUtilRandom[IO].flatMap { implicit random =>
   Slf4jLogger.create[IO].flatMap { implicit logger =>
+    // in a real app you'd probably want a real Trace implementation
+    import natchez.Trace.Implicits.noop
+
     Stream.resource(consulAwareClient[IO])
       .flatMap { client =>
         // make a GET call to consul://httpd/, every 2 seconds, until shut down

@@ -1,10 +1,11 @@
 package com.dwolla.consul
 package examples
 
-import cats.effect._
+import cats.effect.{Trace => _, _}
 import cats.effect.std.Random
 import cats.syntax.all._
 import fs2.Stream
+import natchez.Trace
 import org.http4s.client.dsl.Http4sClientDsl
 import org.http4s.ember.client.EmberClientBuilder
 import org.http4s.syntax.all._
@@ -12,7 +13,7 @@ import org.typelevel.log4cats.{Logger, LoggerFactory}
 
 import scala.concurrent.duration._
 
-class ConsulServiceDiscoveryAlgApp[F[_] : Async : LoggerFactory] extends Http4sClientDsl[F] {
+class ConsulServiceDiscoveryAlgApp[F[_] : Async : LoggerFactory : Trace] extends Http4sClientDsl[F] {
   private implicit def loggerR(implicit L: Logger[F]): Logger[Resource[F, *]] = Logger[F].mapK(Resource.liftK)
 
   private val serviceName = ServiceName("httpd")
