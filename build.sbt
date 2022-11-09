@@ -76,7 +76,7 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   .jsSettings(
     libraryDependencies ++= Seq(
       "org.tpolecat" %%% "natchez-noop" % "0.1.6" % Test,
-      "io.github.cquiroz" %%% "scala-java-time" % "2.3.0" % Test,
-      "io.github.cquiroz" %%% "scala-java-time-tzdb" % "2.3.0" % Test,
+      "io.github.cquiroz" %%% "scala-java-time" % "2.4.0" % Test,
+      "io.github.cquiroz" %%% "scala-java-time-tzdb" % "2.4.0" % Test,
     )
   )
