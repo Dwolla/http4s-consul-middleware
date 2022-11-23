@@ -1,5 +1,6 @@
 ThisBuild / crossScalaVersions := Seq("2.13.10", "2.12.17")
 ThisBuild / scalaVersion := crossScalaVersions.value.head
+ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12")
 ThisBuild / organization := "com.dwolla"
 ThisBuild / homepage := Some(url("https://github.com/Dwolla/http4s-consul-middleware"))
 ThisBuild / licenses += ("MIT", url("https://opensource.org/licenses/MIT"))
