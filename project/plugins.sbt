@@ -6,7 +6,7 @@ addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.3.1")
 addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.13.1")
 
 libraryDependencies ++= {
-  val http4sVersion = "0.23.18"
+  val http4sVersion = "0.23.19"
 
   Seq(
     "org.http4s" %% "http4s-ember-client" % http4sVersion,
