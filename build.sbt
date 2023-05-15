@@ -30,7 +30,7 @@ ThisBuild / mergifyStewardConfig ~= {
 }
 ThisBuild / mergifySuccessConditions += MergifyCondition.Custom("#approved-reviews-by>=1")
 
-lazy val log4catsVersion = "2.5.0"
+lazy val log4catsVersion = "2.6.0"
 
 lazy val root = tlCrossRootProject.aggregate(`http4s-consul-middleware`)
 
