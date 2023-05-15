@@ -5,6 +5,7 @@ import cats.effect.{Trace => _, _}
 import cats.effect.std.Random
 import cats.syntax.all._
 import fs2.Stream
+import fs2.io.net.Network
 import natchez.Trace
 import org.http4s.client.dsl.Http4sClientDsl
 import org.http4s.ember.client.EmberClientBuilder
@@ -13,7 +14,7 @@ import org.typelevel.log4cats.{Logger, LoggerFactory}
 
 import scala.concurrent.duration._
 
-class ConsulServiceDiscoveryAlgApp[F[_] : Async : LoggerFactory : Trace] extends Http4sClientDsl[F] {
+class ConsulServiceDiscoveryAlgApp[F[_] : Async : LoggerFactory : Trace : Network] extends Http4sClientDsl[F] {
   private implicit def loggerR(implicit L: Logger[F]): Logger[Resource[F, *]] = Logger[F].mapK(Resource.liftK)
 
   private val serviceName = ServiceName("httpd")
