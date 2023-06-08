@@ -1,4 +1,4 @@
-ThisBuild / crossScalaVersions := Seq("2.13.11", "2.12.17")
+ThisBuild / crossScalaVersions := Seq("2.13.11", "2.12.18")
 ThisBuild / scalaVersion := crossScalaVersions.value.head
 ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12")
 ThisBuild / organization := "com.dwolla"
