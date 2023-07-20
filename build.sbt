@@ -45,7 +45,7 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
       else Set.empty
     },
     libraryDependencies ++= {
-      val http4sVersion = "0.23.21"
+      val http4sVersion = "0.23.23"
       val munitVersion = "0.7.29"
 
       Seq(
