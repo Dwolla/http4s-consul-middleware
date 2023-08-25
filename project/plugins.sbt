@@ -1,4 +1,4 @@
-addSbtPlugin("io.github.davidgregory084" % "sbt-tpolecat" % "0.4.4")
+addSbtPlugin("org.typelevel" % "sbt-tpolecat" % "0.5.0")
 addSbtPlugin("org.typelevel" % "sbt-typelevel-ci-release" % "0.4.22")
 addSbtPlugin("org.typelevel" % "sbt-typelevel-mergify" % "0.4.22")
 addSbtPlugin("org.portable-scala" % "sbt-crossproject" % "1.3.2")
