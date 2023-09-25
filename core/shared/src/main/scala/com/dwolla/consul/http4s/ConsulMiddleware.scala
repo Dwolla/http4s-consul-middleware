@@ -29,8 +29,8 @@ object ConsulMiddleware {
       .toResource
       .flatMap { implicit l =>
         ConsulUriResolver(consulServiceDiscoveryAlg)
-          .map { resolver: ConsulUriResolver[F] =>
-            Client { req: Request[F] =>
+          .map { (resolver: ConsulUriResolver[F]) =>
+            Client { (req: Request[F]) =>
               resolver.resolve(req.uri)
                 .toResource
                 .flatMap { uri =>

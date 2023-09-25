@@ -1,8 +1,7 @@
 import org.typelevel.scalacoptions.ScalacOptions
 
-ThisBuild / crossScalaVersions := Seq("2.13.12", "2.12.18")
+ThisBuild / crossScalaVersions := Seq("3.3.1", "2.13.12", "2.12.18")
 ThisBuild / scalaVersion := (ThisBuild / crossScalaVersions).value.head
-ThisBuild / githubWorkflowScalaVersions := Seq("2.13", "2.12")
 ThisBuild / organization := "com.dwolla"
 ThisBuild / homepage := Some(url("https://github.com/Dwolla/http4s-consul-middleware"))
 ThisBuild / licenses += ("MIT", url("https://opensource.org/licenses/MIT"))
@@ -15,13 +14,6 @@ ThisBuild / developers := List(
   ),
 )
 ThisBuild / startYear := Option(2022)
-ThisBuild / libraryDependencies ++= {
-  if (scalaVersion.value.startsWith("2.")) Seq(
-    compilerPlugin("org.typelevel" %% "kind-projector" % "0.13.2" cross CrossVersion.full),
-    compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
-  )
-  else Seq.empty
-}
 tpolecatScalacOptions += ScalacOptions.release("8")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / tlCiReleaseBranches := Seq("main")
@@ -69,7 +61,12 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
         "org.http4s" %%% "http4s-laws" % http4sVersion % Test,
         "org.scalameta" %%% "munit" % munitVersion % Test,
         "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+      ) ++ (if (scalaVersion.value.startsWith("2.")) Seq(
+        compilerPlugin("org.typelevel" %% "kind-projector" % "0.13.2" cross CrossVersion.full),
+        compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
       )
+      else Seq.empty)
+
     },
   )
   .jvmSettings(

@@ -6,6 +6,7 @@ import cats.syntax.all._
 import io.jaegertracing.Configuration._
 import natchez._
 import natchez.jaeger._
+import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
 
 import java.net.URI
@@ -24,7 +25,7 @@ trait ConsulServiceDiscoveryAlgAppPlatform extends IOApp.Simple {
     jaegerEntryPoint[IO]
       .flatMap(_.root("ConsulServiceDiscoveryAlgApp"))
       .evalMap {
-        implicit val loggerFactory = Slf4jFactory.create[IO]
+        implicit val loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
 
         new ConsulServiceDiscoveryAlgApp[Kleisli[IO, Span[IO], *]].run.run
       }

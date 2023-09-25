@@ -6,6 +6,7 @@ import cats.effect.{Trace => _, _}
 import io.jaegertracing.Configuration._
 import natchez._
 import natchez.jaeger._
+import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
 
 import java.net.URI
@@ -24,7 +25,7 @@ trait ConsulMiddlewareAppPlatform extends IOApp.Simple {
     jaegerEntryPoint[IO]
       .flatMap(_.root("ConsulMiddlewareApp"))
       .evalMap {
-        implicit val loggerFactory = Slf4jFactory.create[IO]
+        implicit val loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
 
         new ConsulMiddlewareApp[ReaderT[IO, Span[IO], *]].run.run
       }
