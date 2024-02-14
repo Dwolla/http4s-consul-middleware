@@ -1,6 +1,6 @@
 import org.typelevel.scalacoptions.ScalacOptions
 
-ThisBuild / crossScalaVersions := Seq("3.3.1", "2.13.12", "2.12.18")
+ThisBuild / crossScalaVersions := Seq("3.4.0", "2.13.12", "2.12.18")
 ThisBuild / scalaVersion := (ThisBuild / crossScalaVersions).value.head
 ThisBuild / organization := "com.dwolla"
 ThisBuild / homepage := Some(url("https://github.com/Dwolla/http4s-consul-middleware"))
