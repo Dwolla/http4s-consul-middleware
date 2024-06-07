@@ -19,9 +19,10 @@ ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / tlCiReleaseBranches := Seq("main")
 ThisBuild / tlBaseVersion := "0.4"
 ThisBuild / tlSonatypeUseLegacyHost := true
-ThisBuild / mergifyStewardConfig ~= {
-  _.map(_.copy(mergeMinors = true, author = "dwolla-oss-scala-steward[bot]"))
-}
+ThisBuild / mergifyStewardConfig ~= { _.map {
+  _.withAuthor("dwolla-oss-scala-steward[bot]")
+    .withMergeMinors(true)
+}}
 ThisBuild / mergifySuccessConditions += MergifyCondition.Custom("#approved-reviews-by>=1")
 
 lazy val log4catsVersion = "2.6.0"
