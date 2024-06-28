@@ -1,5 +1,6 @@
 package com.dwolla.consul
 
+import cats.data.OptionT
 import cats.effect.kernel.Resource.ExitCase
 import cats.effect.std.Random
 import cats.effect.syntax.all._
@@ -53,11 +54,47 @@ trait ConsulServiceDiscoveryAlg[F[_]] { self =>
 }
 
 object ConsulServiceDiscoveryAlg {
+  /**
+   * Constructs a new instance of `ConsulServiceDiscoveryAlg[F]`. Since an `EntryPoint[F]` is provided, background
+   * requests will be traced in their own traces.
+   *
+   * @param consulBaseUri the base URI of the Consul API to call to resolve service addresses
+   * @param longPollTimeout how long to hold an open connection to the Consul API, waiting for a state change to be reported
+   * @param client the http4s `Client[F]` used to make requests of the Consul API
+   * @param entryPoint an `EntryPoint[F]` used to create new root traces for background processes
+   * @param L a `Local[F, Span[F]]` instance used to change the `Span[F]` context for specific scopes
+   * @tparam F the effect in which to operate
+   * @return a new instance of `ConsulServiceDiscoveryAlg[F]`
+   */
   def apply[F[_] : Temporal : LoggerFactory : Random : Trace](consulBaseUri: Uri,
                                                               longPollTimeout: FiniteDuration,
                                                               client: Client[F],
                                                               entryPoint: EntryPoint[F])
                                                              (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
+    make(consulBaseUri, longPollTimeout, client, entryPoint.some)
+
+  /**
+   * Constructs a new instance of `ConsulServiceDiscoveryAlg[F]`. Since no `EntryPoint[F]` is provided, background
+   * requests will not be traced.
+   *
+   * @param consulBaseUri the base URI of the Consul API to call to resolve service addresses
+   * @param longPollTimeout how long to hold an open connection to the Consul API, waiting for a state change to be reported
+   * @param client the http4s `Client[F]` used to make requests of the Consul API
+   * @param L a `Local[F, Span[F]]` instance used to change the `Span[F]` context for specific scopes
+   * @tparam F the effect in which to operate
+   * @return a new instance of `ConsulServiceDiscoveryAlg[F]`
+   */
+  def apply[F[_] : Temporal : LoggerFactory : Random : Trace](consulBaseUri: Uri,
+                                                              longPollTimeout: FiniteDuration,
+                                                              client: Client[F])
+                                                             (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
+    make(consulBaseUri, longPollTimeout, client, None)
+
+  private def make[F[_] : Temporal : LoggerFactory : Random : Trace](consulBaseUri: Uri,
+                                                                     longPollTimeout: FiniteDuration,
+                                                                     client: Client[F],
+                                                                     entryPoint: Option[EntryPoint[F]])
+                                                                    (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
     LoggerFactory[F]
       .create(LoggerName("com.dwolla.consul.ConsulServiceDiscoveryAlg"))
       .map { implicit l =>
@@ -141,6 +178,7 @@ object ConsulServiceDiscoveryAlg {
    * @param consulBase the base URI where the Consul API can be accessed, e.g. [[http://localhost:8500]]
    * @param longPollTimeout the maximum amount of time to wait before Consul should return a response
    * @param client the `org.http4s.client.Client[F]` used to interact with the Consul API. Should be configured not to timeout on blocking queries
+   * @param entryPoint an optional EntryPoint used to construct new traces for background requests. If none, a no-op span is used instead.
    * @return a `cats.effect.Resource` managing the background process and containing an effect to view the current set of available instances
    */
   private def continuallyUpdating[F[_] : Temporal : Logger](serviceName: ServiceName,
@@ -149,7 +187,7 @@ object ConsulServiceDiscoveryAlg {
                                                             consulBase: Uri,
                                                             longPollTimeout: FiniteDuration,
                                                             client: Client[F],
-                                                            entryPoint: EntryPoint[F],
+                                                            entryPoint: Option[EntryPoint[F]],
                                                            )
                                                            (implicit L: Local[F, Span[F]]): Resource[F, F[Vector[Uri.Authority]]] =
     Stream.unfoldEval(initialConsulIndex) { maybeIndex =>
@@ -172,17 +210,21 @@ object ConsulServiceDiscoveryAlg {
       .onFinalize(Logger[F].trace(s"👋 shutting down continuallyUpdating($serviceName, …)"))
       .map(_.get)
 
-  private def inNewLinkedRootSpan[F[_] : MonadCancelThrow, A](entryPoint: EntryPoint[F])
+  private def inNewLinkedRootSpan[F[_] : MonadCancelThrow, A](entryPoint: Option[EntryPoint[F]])
                                                              (fa: F[A])
                                                              (implicit L: Local[F, Span[F]]): F[A] =
-    natchez.mtl.natchezMtlTraceForLocal
-      .kernel
-      .map(Span.Options.Defaults.withLink)
-      .flatMap {
-        entryPoint
-          .root("com.dwolla.consul.ConsulServiceDiscoveryAlg.continuallyUpdating", _)
-          .use(Local[F, Span[F]].scope(fa))
+    OptionT.fromOption[Resource[F, *]](entryPoint)
+      .semiflatMap { ep =>
+        natchez.mtl.natchezMtlTraceForLocal
+          .kernel
+          .map(Span.Options.Defaults.withLink)
+          .toResource
+          .flatMap {
+            ep.root("com.dwolla.consul.ConsulServiceDiscoveryAlg.continuallyUpdating", _)
+          }
       }
+      .getOrElse(Span.noop)
+      .use(Local[F, Span[F]].scope(fa))
 
   private[consul] def serviceListUri(consulBase: Uri,
                                      serviceName: ServiceName,
