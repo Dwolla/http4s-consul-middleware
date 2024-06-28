@@ -40,13 +40,4 @@ object ConsulMiddleware {
           }
           .onFinalize(Logger[F].trace("👋 shutting down ConsulMiddleware"))
       }
-
-  @deprecated("used traced version", "0.2.0")
-  def apply[F[_]](consulServiceDiscoveryAlg: ConsulServiceDiscoveryAlg[F],
-                  client: Client[F],
-                  F: Async[F],
-                  L: LoggerFactory[F]): Resource[F, Client[F]] = {
-    ConsulMiddleware(consulServiceDiscoveryAlg)(client)(F, L, natchez.Trace.Implicits.noop(F))
-  }
-
 }

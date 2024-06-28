@@ -35,10 +35,6 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   .settings(
     description := "http4s middleware to discover the host and port for an HTTP request using Consul",
     tpolecatScalacOptions += ScalacOptions.release("8"),
-    tlMimaPreviousVersions ++= {
-      if (scalaVersion.value.startsWith("2.")) Set("0.1.0")
-      else Set.empty
-    },
     libraryDependencies ++= {
       val http4sVersion = "0.23.27"
       val munitVersion = "1.0.0"

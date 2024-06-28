@@ -56,9 +56,4 @@ object ConsulUriResolver {
             .flatTap(newUri => Logger[F].trace(s"  rewrote $source to $newUri"))
 
     }
-
-  @deprecated("used traced version", "0.2.0")
-  def apply[F[_]](backgroundResolver: ConsulServiceDiscoveryAlg[F], F: Async[F], L: LoggerFactory[F]): Resource[F, ConsulUriResolver[F]] =
-    ConsulUriResolver(backgroundResolver)(F, L, natchez.Trace.Implicits.noop(F))
-
 }
