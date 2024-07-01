@@ -1,17 +1,19 @@
 package com.dwolla.consul
 
+import cats.data.OptionT
 import cats.effect.kernel.Resource.ExitCase
-import cats.{Monad, ~>}
 import cats.effect.std.Random
 import cats.effect.syntax.all._
 import cats.effect.{Trace => _, _}
+import cats.mtl.Local
 import cats.syntax.all._
+import cats.{Monad, ~>}
 import com.dwolla.consul.ThirdPartyTypeCodecs._
 import fs2.Stream
 import io.circe.optics.JsonPath.root
 import io.circe.{Decoder, Json}
 import monocle.Traversal
-import natchez.Trace
+import natchez.{EntryPoint, Span, Trace}
 import org.http4s.Method.GET
 import org.http4s._
 import org.http4s.circe.jsonOf
@@ -52,9 +54,47 @@ trait ConsulServiceDiscoveryAlg[F[_]] { self =>
 }
 
 object ConsulServiceDiscoveryAlg {
+  /**
+   * Constructs a new instance of `ConsulServiceDiscoveryAlg[F]`. Since an `EntryPoint[F]` is provided, background
+   * requests will be traced in their own traces.
+   *
+   * @param consulBaseUri the base URI of the Consul API to call to resolve service addresses
+   * @param longPollTimeout how long to hold an open connection to the Consul API, waiting for a state change to be reported
+   * @param client the http4s `Client[F]` used to make requests of the Consul API
+   * @param entryPoint an `EntryPoint[F]` used to create new root traces for background processes
+   * @param L a `Local[F, Span[F]]` instance used to change the `Span[F]` context for specific scopes
+   * @tparam F the effect in which to operate
+   * @return a new instance of `ConsulServiceDiscoveryAlg[F]`
+   */
   def apply[F[_] : Temporal : LoggerFactory : Random : Trace](consulBaseUri: Uri,
                                                               longPollTimeout: FiniteDuration,
-                                                              client: Client[F]): F[ConsulServiceDiscoveryAlg[F]] =
+                                                              client: Client[F],
+                                                              entryPoint: EntryPoint[F])
+                                                             (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
+    make(consulBaseUri, longPollTimeout, client, entryPoint.some)
+
+  /**
+   * Constructs a new instance of `ConsulServiceDiscoveryAlg[F]`. Since no `EntryPoint[F]` is provided, background
+   * requests will not be traced.
+   *
+   * @param consulBaseUri the base URI of the Consul API to call to resolve service addresses
+   * @param longPollTimeout how long to hold an open connection to the Consul API, waiting for a state change to be reported
+   * @param client the http4s `Client[F]` used to make requests of the Consul API
+   * @param L a `Local[F, Span[F]]` instance used to change the `Span[F]` context for specific scopes
+   * @tparam F the effect in which to operate
+   * @return a new instance of `ConsulServiceDiscoveryAlg[F]`
+   */
+  def apply[F[_] : Temporal : LoggerFactory : Random : Trace](consulBaseUri: Uri,
+                                                              longPollTimeout: FiniteDuration,
+                                                              client: Client[F])
+                                                             (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
+    make(consulBaseUri, longPollTimeout, client, None)
+
+  private def make[F[_] : Temporal : LoggerFactory : Random : Trace](consulBaseUri: Uri,
+                                                                     longPollTimeout: FiniteDuration,
+                                                                     client: Client[F],
+                                                                     entryPoint: Option[EntryPoint[F]])
+                                                                    (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
     LoggerFactory[F]
       .create(LoggerName("com.dwolla.consul.ConsulServiceDiscoveryAlg"))
       .map { implicit l =>
@@ -63,7 +103,7 @@ object ConsulServiceDiscoveryAlg {
             lookup[F](serviceName, consulBaseUri, None, longPollTimeout, client)
               .toResource
               .flatMap { case (initialValue, initialConsulIndex) =>
-                continuallyUpdating(serviceName, initialValue, initialConsulIndex, consulBaseUri, longPollTimeout, client)
+                continuallyUpdating(serviceName, initialValue, initialConsulIndex, consulBaseUri, longPollTimeout, client, entryPoint)
               }
               .onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)"))
         }
@@ -138,6 +178,7 @@ object ConsulServiceDiscoveryAlg {
    * @param consulBase the base URI where the Consul API can be accessed, e.g. [[http://localhost:8500]]
    * @param longPollTimeout the maximum amount of time to wait before Consul should return a response
    * @param client the `org.http4s.client.Client[F]` used to interact with the Consul API. Should be configured not to timeout on blocking queries
+   * @param entryPoint an optional EntryPoint used to construct new traces for background requests. If none, a no-op span is used instead.
    * @return a `cats.effect.Resource` managing the background process and containing an effect to view the current set of available instances
    */
   private def continuallyUpdating[F[_] : Temporal : Logger](serviceName: ServiceName,
@@ -145,24 +186,45 @@ object ConsulServiceDiscoveryAlg {
                                                             initialConsulIndex: Option[ConsulIndex],
                                                             consulBase: Uri,
                                                             longPollTimeout: FiniteDuration,
-                                                            client: Client[F]): Resource[F, F[Vector[Uri.Authority]]] =
+                                                            client: Client[F],
+                                                            entryPoint: Option[EntryPoint[F]],
+                                                           )
+                                                           (implicit L: Local[F, Span[F]]): Resource[F, F[Vector[Uri.Authority]]] =
     Stream.unfoldEval(initialConsulIndex) { maybeIndex =>
-      // since this is a background task, it doesn't make sense to attach it to the trace that initially started it
-      import natchez.Trace.Implicits.noop
+      inNewLinkedRootSpan(entryPoint) { // since this is a background task, it doesn't make sense
+        import natchez.mtl._            // to directly attach it to the trace that initially started it,
+                                        // but linking it to the new root span is helpful
 
-      lookup[F](serviceName, consulBase, maybeIndex, longPollTimeout, client)
-        .map(_.leftMap(_.some))                               // if we successfully got values, wrap them in Some so we can unNone later
-        .handleErrorWith {
-          // TODO maybe we should introduce some kind of escalating delay here?
-          Logger[F].warn(_)("🔥 An exception occurred getting service details from Consul; retrying")
-            .as((none[Vector[Uri.Authority]], maybeIndex))    // continue successfully, but emit None so the failure can be filtered out later
-        }
-        .map(_.some)                                          // this stream will unfold forever (well, until its Resource is finalized)
+        lookup[F](serviceName, consulBase, maybeIndex, longPollTimeout, client)
+          .map(_.leftMap(_.some)) // if we successfully got values, wrap them in Some so we can unNone later
+          .handleErrorWith {
+            // TODO maybe we should introduce some kind of escalating delay here?
+            Logger[F].warn(_)("🔥 An exception occurred getting service details from Consul; retrying")
+              .as((none[Vector[Uri.Authority]], maybeIndex)) // continue successfully, but emit None so the failure can be filtered out later
+          }
+          .map(_.some) // this stream will unfold forever (well, until its Resource is finalized)
+      }
     }
-      .unNone                                                 // errors returned by `lookup` are emitted as None, so filter them out
+      .unNone          // errors returned by `lookup` are emitted as None, so filter them out
       .holdResource(initialValue)
       .onFinalize(Logger[F].trace(s"👋 shutting down continuallyUpdating($serviceName, …)"))
       .map(_.get)
+
+  private def inNewLinkedRootSpan[F[_] : MonadCancelThrow, A](entryPoint: Option[EntryPoint[F]])
+                                                             (fa: F[A])
+                                                             (implicit L: Local[F, Span[F]]): F[A] =
+    OptionT.fromOption[Resource[F, *]](entryPoint)
+      .semiflatMap { ep =>
+        natchez.mtl.natchezMtlTraceForLocal
+          .kernel
+          .map(Span.Options.Defaults.withLink)
+          .toResource
+          .flatMap {
+            ep.root("com.dwolla.consul.ConsulServiceDiscoveryAlg.continuallyUpdating", _)
+          }
+      }
+      .getOrElse(Span.noop)
+      .use(Local[F, Span[F]].scope(fa))
 
   private[consul] def serviceListUri(consulBase: Uri,
                                      serviceName: ServiceName,
@@ -172,15 +234,6 @@ object ConsulServiceDiscoveryAlg {
     consulBase / "v1" / "health" / "service" / serviceName +? OnlyHealthyServices +?? index +?? index.as(WaitPeriod(longPollTimeout))
 
   private implicit def jsonEntityDecoder[F[_] : Concurrent, A: Decoder]: EntityDecoder[F, A] = jsonOf[F, A]
-
-  @deprecated("used traced version", "0.2.0")
-  def apply[F[_]](consulBaseUri: Uri,
-                  longPollTimeout: FiniteDuration,
-                  client: Client[F],
-                  F: Temporal[F],
-                  L: LoggerFactory[F],
-                  R: Random[F]): F[ConsulServiceDiscoveryAlg[F]] =
-    ConsulServiceDiscoveryAlg(consulBaseUri, longPollTimeout, client)(F, L, R, natchez.Trace.Implicits.noop(F))
 }
 
 abstract class AbstractConsulServiceDiscoveryAlg[F[_] : Random : Monad] extends ConsulServiceDiscoveryAlg[F] {

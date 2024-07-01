@@ -3,13 +3,14 @@ package examples
 
 import cats.effect.{Trace => _, _}
 import cats.effect.std.Random
+import cats.mtl.Local
 import cats.syntax.all._
 import com.dwolla.consul._
 import com.dwolla.consul.examples.ConsulMiddlewareApp.consulAwareClient
 import com.dwolla.consul.http4s.ConsulMiddleware
 import fs2.Stream
 import fs2.io.net.Network
-import natchez.Trace
+import natchez.{EntryPoint, Span, Trace}
 import org.http4s.Method.GET
 import org.http4s._
 import org.http4s.client.Client
@@ -20,7 +21,8 @@ import org.typelevel.log4cats.{Logger, LoggerFactory}
 
 import scala.concurrent.duration._
 
-class ConsulMiddlewareApp[F[_] : Async : LoggerFactory : Trace : Network] extends Http4sClientDsl[F] {
+class ConsulMiddlewareApp[F[_] : Async : LoggerFactory : Trace : Network](entryPoint: EntryPoint[F])
+                                                                         (implicit L: Local[F, Span[F]]) extends Http4sClientDsl[F] {
   val exampleConsulUri: Uri = uri"consul://httpd/"
 
   def run: F[Unit] =
@@ -29,7 +31,7 @@ class ConsulMiddlewareApp[F[_] : Async : LoggerFactory : Trace : Network] extend
         .create
         .flatMap { implicit logger: Logger[F] =>
           (for {
-            client <- Stream.resource(consulAwareClient[F])
+            client <- Stream.resource(consulAwareClient(entryPoint))
             _ <- Stream.repeatEval {
               client
                 .successful(GET(exampleConsulUri))
@@ -48,13 +50,15 @@ class ConsulMiddlewareApp[F[_] : Async : LoggerFactory : Trace : Network] extend
 }
 
 object ConsulMiddlewareApp extends ConsulMiddlewareAppPlatform {
-  private[ConsulMiddlewareApp] def consulAwareClient[F[_] : Async : Random : LoggerFactory : Trace : Network]: Resource[F, Client[F]] =
-    (consulServiceDiscoveryAlg[F], normalClient[F])
+  private[ConsulMiddlewareApp] def consulAwareClient[F[_] : Async : Random : LoggerFactory : Trace : Network](entryPoint: EntryPoint[F])
+                                                                                                             (implicit L: Local[F, Span[F]]): Resource[F, Client[F]] =
+    (consulServiceDiscoveryAlg[F](entryPoint), normalClient[F])
       .parMapN(ConsulMiddleware(_)(_))
       .flatten
 
-  private def consulServiceDiscoveryAlg[F[_] : Async : Random : LoggerFactory : Trace : Network]: Resource[F, ConsulServiceDiscoveryAlg[F]] =
-    longPollClient[F].evalMap(ConsulServiceDiscoveryAlg(uri"http://localhost:8500", 1.minute, _))
+  private def consulServiceDiscoveryAlg[F[_] : Async : Random : LoggerFactory : Trace : Network](entryPoint: EntryPoint[F])
+                                                                                                (implicit L: Local[F, Span[F]]): Resource[F, ConsulServiceDiscoveryAlg[F]] =
+    longPollClient[F].evalMap(ConsulServiceDiscoveryAlg(uri"http://localhost:8500", 1.minute, _, entryPoint))
 
   private def longPollClient[F[_] : Async : Network]: Resource[F, Client[F]] = clientWithTimeout(75.seconds)
 

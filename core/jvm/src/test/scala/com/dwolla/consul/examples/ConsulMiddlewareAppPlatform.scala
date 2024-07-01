@@ -1,17 +1,17 @@
 package com.dwolla.consul.examples
 
-import cats.data._
-import cats.syntax.all._
 import cats.effect.{Trace => _, _}
+import cats.syntax.all._
 import io.jaegertracing.Configuration._
 import natchez._
 import natchez.jaeger._
+import natchez.mtl._
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
 
 import java.net.URI
 
-trait ConsulMiddlewareAppPlatform extends IOApp.Simple {
+trait ConsulMiddlewareAppPlatform extends IOApp.Simple with LocalTracing {
   private def jaegerEntryPoint[F[_] : Sync]: Resource[F, EntryPoint[F]] =
     Jaeger.entryPoint("ConsulMiddlewareApp", Either.catchNonFatal(new URI("http://localhost:16686")).toOption) { c =>
       Sync[F].delay {
@@ -23,11 +23,16 @@ trait ConsulMiddlewareAppPlatform extends IOApp.Simple {
 
   override def run: IO[Unit] =
     jaegerEntryPoint[IO]
-      .flatMap(_.root("ConsulMiddlewareApp"))
-      .evalMap {
-        implicit val loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
+      .flatMap { ep =>
+        ep.root("ConsulMiddlewareApp")
+          .evalMap {
+            implicit val loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
 
-        new ConsulMiddlewareApp[ReaderT[IO, Span[IO], *]].run.run
+            IOLocal(_).flatMap { implicit l =>
+              new ConsulMiddlewareApp(ep).run
+            }
+          }
       }
       .use_
+
 }

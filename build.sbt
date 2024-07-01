@@ -35,10 +35,6 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   .settings(
     description := "http4s middleware to discover the host and port for an HTTP request using Consul",
     tpolecatScalacOptions += ScalacOptions.release("8"),
-    tlMimaPreviousVersions ++= {
-      if (scalaVersion.value.startsWith("2.")) Set("0.1.0")
-      else Set.empty
-    },
     libraryDependencies ++= {
       val http4sVersion = "0.23.27"
       val munitVersion = "1.0.0"
@@ -54,8 +50,9 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
         "org.typelevel" %%% "keypool" % "0.4.9",
         "org.typelevel" %%% "case-insensitive" % "1.4.0",
         "org.typelevel" %%% "cats-effect" % "3.5.4",
+        "org.typelevel" %%% "cats-mtl" % "1.4.0",
         "org.tpolecat" %%% "natchez-core" % "0.3.5",
-        "org.tpolecat" %%% "natchez-http4s" % "0.5.0",
+        "org.tpolecat" %%% "natchez-mtl" % "0.3.5",
         "org.typelevel" %%% "log4cats-noop" % log4catsVersion % Test,
         "org.http4s" %%% "http4s-ember-client" % http4sVersion % Test,
         "org.http4s" %%% "http4s-dsl" % http4sVersion % Test,
@@ -67,7 +64,6 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
         compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
       )
       else Seq.empty)
-
     },
   )
   .jvmSettings(
