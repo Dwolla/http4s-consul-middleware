@@ -38,12 +38,10 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
     libraryDependencies ++= {
       val http4sVersion = "0.23.27"
       val munitVersion = "1.0.0"
-      val circeOpticsV = if (scalaBinaryVersion.value == "2.12") "0.14.1" else "0.15.0"
 
       Seq(
         "org.http4s" %%% "http4s-client" % http4sVersion,
         "org.http4s" %%% "http4s-circe" % http4sVersion,
-        "io.circe" %%% "circe-optics" % circeOpticsV,
         "io.circe" %%% "circe-literal" % "0.14.9",
         "io.monix" %%% "newtypes-core" % "0.2.3",
         "org.typelevel" %%% "log4cats-core" % log4catsVersion,

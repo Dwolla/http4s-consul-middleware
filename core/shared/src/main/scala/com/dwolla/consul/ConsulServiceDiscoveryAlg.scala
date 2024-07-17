@@ -10,9 +10,7 @@ import cats.syntax.all._
 import cats.{Monad, ~>}
 import com.dwolla.consul.ThirdPartyTypeCodecs._
 import fs2.Stream
-import io.circe.optics.JsonPath.root
-import io.circe.{Decoder, Json}
-import monocle.Traversal
+import io.circe._
 import natchez.{EntryPoint, Span, Trace}
 import org.http4s.Method.GET
 import org.http4s._
@@ -109,9 +107,6 @@ object ConsulServiceDiscoveryAlg {
         }
       }
 
-  private val serviceLens: Traversal[Json, Uri.Authority] =
-    root.each.Service.as[Uri.Authority]
-
   /**
    * Makes a request of the Consul API to retrieve the set of healthy instances for the given service.
    *
@@ -148,7 +143,18 @@ object ConsulServiceDiscoveryAlg {
               Logger[F].trace(s"📠 ${AnsiColorCodes.red}Consul response ${AnsiColorCodes.reset}") >>
                 resp
                   .as[Json]
-                  .map(serviceLens.getAll(_).toVector)
+                  .map {
+                    _
+                      .asArray
+                      .toVector
+                      .flatten
+                      .flatMap {
+                        _.asObject
+                          .flatMap(_("Service"))
+                          .flatMap(_.as[Uri.Authority].toOption)
+                          .toVector
+                      }
+                  }
                   .tupleRight(resp.headers.get[ConsulIndex])
             }
             .timeout(longPollTimeout + 1.second)
