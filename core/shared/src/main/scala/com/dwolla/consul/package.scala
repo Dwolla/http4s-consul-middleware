@@ -1,12 +1,14 @@
 package com.dwolla
 
-import cats.syntax.all._
+import io.circe.Encoder
 import monix.newtypes.NewtypeWrapped
 import org.http4s.Header.Single
-import org.http4s.{Header, QueryParam, QueryParamEncoder, Uri}
+import org.http4s.QueryParamDecoder.fromUnsafeCast
+import org.http4s._
 import org.typelevel.ci._
 
 import scala.concurrent.duration._
+import scala.util.matching.Regex
 
 package object consul {
   case object OnlyHealthyServices {
@@ -21,20 +23,49 @@ package object consul {
 package consul {
   object ServiceName extends NewtypeWrapped[String] {
     implicit val serviceNameSegmentEncoder: Uri.Path.SegmentEncoder[ServiceName] = Uri.Path.SegmentEncoder[String].contramap(_.value)
+
+    def unapply(str: String): Some[ServiceName] =
+      Some(ServiceName(str))
+
+    implicit val serviceNameEncoder: Encoder[ServiceName] = Encoder[String].contramap(_.value)
   }
 
-  object ConsulIndex extends NewtypeWrapped[String] {
+  /* The Consul documentation (https://developer.hashicorp.com/consul/api-docs/features/blocking#implementation-details) says
+   * that "clients should sanity check that their index is at least 1 after each blocking response is handled"
+   * so it should be safe to use a Long and confirm in the parser that the value is positive.
+   */
+  object ConsulIndex extends NewtypeWrapped[Long] {
     implicit val consulIndexHeader: Header[ConsulIndex, Single] = Header.create(
       ci"X-Consul-Index",
-      _.value,
-      ConsulIndex(_).asRight
+      _.value.toString,
+      s =>
+        ParseResult.fromTryCatchNonFatal("Consul index must be a positive integer value")(s.toLong)
+          .flatMap {
+            case x if x > 0 => Right(ConsulIndex(x))
+            case x => Left(ParseFailure("Consul index must be greater than 0", s"Found $x <= 0"))
+          }
     )
     implicit val consulIndexQueryParam: QueryParam[ConsulIndex] = QueryParam.fromKey("index")
-    implicit val consulIndexQueryParamEncoder: QueryParamEncoder[ConsulIndex] = QueryParamEncoder[String].contramap(_.value)
+    implicit val consulIndexQueryParamEncoder: QueryParamEncoder[ConsulIndex] = QueryParamEncoder[Long].contramap(_.value)
+    implicit val consulIndexQueryParamDecoder: QueryParamDecoder[ConsulIndex] = QueryParamDecoder[Long].map(ConsulIndex(_))
   }
 
   object WaitPeriod extends NewtypeWrapped[FiniteDuration] {
+    private val regex: Regex = """(?<value>\d+)(?<unit>[sm])""".r
     implicit val waitQueryParam: QueryParam[WaitPeriod] = QueryParam.fromKey("wait")
     implicit val waitQueryParamEncoder: QueryParamEncoder[WaitPeriod] = QueryParamEncoder[String].contramap(d => s"${d.value.toSeconds}s")
+    implicit val waitQueryParamDecoder: QueryParamDecoder[WaitPeriod] =
+      fromUnsafeCast[WaitPeriod] { _.value match {
+        case regex(value, unit) =>
+          val valueInt = value.toInt
+
+          val seconds = unit match {
+            case "s" => valueInt
+            case "m" => valueInt * 60
+          }
+
+          WaitPeriod(seconds.seconds)
+        case other => throw new MatchError(other)
+      }}("WaitPeriod")
   }
 }
