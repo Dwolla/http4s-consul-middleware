@@ -17,7 +17,7 @@ ThisBuild / startYear := Option(2022)
 tpolecatScalacOptions += ScalacOptions.release("8")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / tlCiReleaseBranches := Seq("main")
-ThisBuild / tlBaseVersion := "0.4"
+ThisBuild / tlBaseVersion := "0.3"
 ThisBuild / tlSonatypeUseLegacyHost := true
 ThisBuild / mergifyStewardConfig ~= { _.map {
   _.withAuthor("dwolla-oss-scala-steward[bot]")
@@ -35,6 +35,7 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   .settings(
     description := "http4s middleware to discover the host and port for an HTTP request using Consul",
     tpolecatScalacOptions += ScalacOptions.release("8"),
+    tlVersionIntroduced := Map("3" -> "0.3.1", "2.12" -> "0.0.1", "2.13" -> "0.0.1"),
     libraryDependencies ++= {
       val http4sVersion = "0.23.27"
       val munitVersion = "1.0.0"
@@ -51,6 +52,7 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
         "org.typelevel" %%% "cats-mtl" % "1.4.0",
         "org.tpolecat" %%% "natchez-core" % "0.3.5",
         "org.tpolecat" %%% "natchez-mtl" % "0.3.5",
+        "org.tpolecat" %%% "natchez-noop" % "0.3.5",
         "org.typelevel" %%% "log4cats-noop" % log4catsVersion % Test,
         "org.http4s" %%% "http4s-ember-client" % http4sVersion % Test,
         "org.http4s" %%% "http4s-dsl" % http4sVersion % Test,

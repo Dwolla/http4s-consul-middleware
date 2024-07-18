@@ -120,7 +120,7 @@ class ConsulApi[F[_] : Temporal](services: Vector[ConsulApi.Service]) extends Ht
   object WaitPeriod extends OptionalQueryParamDecoderMatcher[com.dwolla.consul.WaitPeriod]("wait")
 
   def routes: HttpRoutes[F] = HttpRoutes.of {
-    case GET -> Root / "v1" / "health" / "service" / serviceName :? OnlyHealthyServices(_) :? ConsulIndex(idx) :? WaitPeriod(timeout) =>
+    case GET -> Root / "v1" / "health" / "service" / serviceName :? OnlyHealthyServices(true) :? ConsulIndex(idx) :? WaitPeriod(timeout) =>
       val json = services.filter {
         case ConsulApi.Service(ServiceName(`serviceName`), _, _, true) => true
         case _ => false

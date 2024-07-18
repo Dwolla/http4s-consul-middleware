@@ -7,10 +7,11 @@ import cats.effect.syntax.all._
 import cats.effect.{Trace => _, _}
 import cats.mtl.Local
 import cats.syntax.all._
-import cats.{Monad, ~>}
+import cats.{Applicative, Monad, ~>}
 import com.dwolla.consul.ThirdPartyTypeCodecs._
 import fs2.Stream
 import io.circe._
+import natchez.noop.NoopTrace
 import natchez.{EntryPoint, Span, Trace}
 import org.http4s.Method.GET
 import org.http4s._
@@ -240,6 +241,31 @@ object ConsulServiceDiscoveryAlg {
     consulBase / "v1" / "health" / "service" / serviceName +? OnlyHealthyServices +?? index +?? index.as(WaitPeriod(longPollTimeout))
 
   private implicit def jsonEntityDecoder[F[_] : Concurrent, A: Decoder]: EntityDecoder[F, A] = jsonOf[F, A]
+
+  @deprecated("maintained for binary compatibility: this version doesn't place background traces in the proper scope", "0.3.1")
+  def apply[F[_]](consulBaseUri: Uri,
+                  longPollTimeout: FiniteDuration,
+                  client: Client[F],
+                  F: Temporal[F],
+                  L: LoggerFactory[F],
+                  R: Random[F]): F[ConsulServiceDiscoveryAlg[F]] =
+    apply(consulBaseUri, longPollTimeout, client)(F, L, R, NoopTrace()(F), new BrokenIllegalNoopLocalSpan(F))
+
+  @deprecated("maintained for binary compatibility: this version doesn't place background traces in the proper scope", "0.3.1")
+  def apply[F[_]](consulBaseUri: Uri,
+                  longPollTimeout: FiniteDuration,
+                  client: Client[F],
+                  F: Temporal[F],
+                  L: LoggerFactory[F],
+                  R: Random[F],
+                  T: Trace[F]): F[ConsulServiceDiscoveryAlg[F]] =
+    apply(consulBaseUri, longPollTimeout, client)(F, L, R, T, new BrokenIllegalNoopLocalSpan(F))
+
+  private class BrokenIllegalNoopLocalSpan[F[_]](A: Applicative[F]) extends Local[F, Span[F]] {
+    override def local[A](fa: F[A])(f: Span[F] => Span[F]): F[A] = fa
+    override def applicative: Applicative[F] = A
+    override def ask[E2 >: Span[F]]: F[E2] = A.pure(Span.noop(A))
+  }
 }
 
 abstract class AbstractConsulServiceDiscoveryAlg[F[_] : Random : Monad] extends ConsulServiceDiscoveryAlg[F] {

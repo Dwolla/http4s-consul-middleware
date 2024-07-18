@@ -4,6 +4,7 @@ import cats.effect.syntax.all._
 import cats.effect.{Trace => _, _}
 import com.dwolla.consul._
 import natchez.Trace
+import natchez.noop.NoopTrace
 import org.http4s._
 import org.http4s.client._
 import org.typelevel.log4cats._
@@ -40,4 +41,11 @@ object ConsulMiddleware {
           }
           .onFinalize(Logger[F].trace("👋 shutting down ConsulMiddleware"))
       }
+
+  @deprecated("maintained for binary compatibility: this version doesn't place background traces in the proper scope", "0.3.1")
+  def apply[F[_]](consulServiceDiscoveryAlg: ConsulServiceDiscoveryAlg[F],
+                  client: Client[F],
+                  F: Async[F],
+                  L: LoggerFactory[F]): Resource[F, Client[F]] =
+    apply(consulServiceDiscoveryAlg)(client)(F, L, NoopTrace()(F))
 }

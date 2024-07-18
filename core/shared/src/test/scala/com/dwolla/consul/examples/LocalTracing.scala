@@ -4,7 +4,7 @@ import cats.Applicative
 import cats.effect.{IO, IOLocal}
 import cats.mtl.Local
 
-trait LocalTracing {
+private[consul] trait LocalTracing {
   /**
    * Given an `IOLocal[E]`, provides a `Local[IO, E]`.
    *
@@ -19,7 +19,7 @@ trait LocalTracing {
    * @tparam E the type of state to propagate
    * @return a `Local[IO, E]` backed by the given `IOLocal[E]`
    */
-  implicit def catsMtlEffectLocalForIO[E](implicit ioLocal: IOLocal[E]): Local[IO, E] =
+  private[consul] implicit def catsMtlEffectLocalForIO[E](implicit ioLocal: IOLocal[E]): Local[IO, E] =
     new Local[IO, E] {
       override def local[A](fa: IO[A])(f: E => E): IO[A] =
         ioLocal.get.flatMap { initial =>

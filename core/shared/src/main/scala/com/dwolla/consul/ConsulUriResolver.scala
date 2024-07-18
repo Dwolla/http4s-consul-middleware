@@ -5,6 +5,7 @@ import cats.effect.implicits.effectResourceOps
 import cats.syntax.all._
 import cats.~>
 import natchez.Trace
+import natchez.noop.NoopTrace
 import org.http4s.Uri.Host
 import org.http4s._
 import org.http4s.syntax.all._
@@ -56,4 +57,11 @@ object ConsulUriResolver {
             .flatTap(newUri => Logger[F].trace(s"  rewrote $source to $newUri"))
 
     }
+
+  @deprecated("maintained for binary compatibility: this version doesn't place background traces in the proper scope", "0.3.1")
+  def apply[F[_]](backgroundResolver: ConsulServiceDiscoveryAlg[F],
+                  F: Async[F],
+                  L: LoggerFactory[F]): Resource[F, ConsulUriResolver[F]] =
+    apply(backgroundResolver)(F, L, NoopTrace()(F))
+
 }
