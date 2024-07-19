@@ -56,8 +56,8 @@ object ConsulMiddlewareApp extends ConsulMiddlewareAppPlatform {
       .parMapN(ConsulMiddleware(_)(_))
       .flatten
 
-  private def consulServiceDiscoveryAlg[F[_] : Async : Random : LoggerFactory : Trace : Network](entryPoint: EntryPoint[F])
-                                                                                                (implicit L: Local[F, Span[F]]): Resource[F, ConsulServiceDiscoveryAlg[F]] =
+  private def consulServiceDiscoveryAlg[F[_] : Async : Random : LoggerFactory : Network](entryPoint: EntryPoint[F])
+                                                                                        (implicit L: Local[F, Span[F]]): Resource[F, ConsulServiceDiscoveryAlg[F]] =
     longPollClient[F].evalMap(ConsulServiceDiscoveryAlg(uri"http://localhost:8500", 1.minute, _, entryPoint))
 
   private def longPollClient[F[_] : Async : Network]: Resource[F, Client[F]] = clientWithTimeout(75.seconds)

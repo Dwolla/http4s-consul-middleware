@@ -1,11 +1,10 @@
 package com.dwolla.consul.examples
 
-import cats.effect.{Trace => _, _}
+import cats.effect._
 import cats.syntax.all._
 import io.jaegertracing.Configuration._
 import natchez._
 import natchez.jaeger._
-import natchez.mtl.natchezMtlTraceForLocal
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.slf4j.Slf4jFactory
 

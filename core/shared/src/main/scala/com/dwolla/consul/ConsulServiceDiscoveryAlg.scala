@@ -11,7 +11,7 @@ import cats.{Applicative, Monad, ~>}
 import com.dwolla.consul.ThirdPartyTypeCodecs._
 import fs2.Stream
 import io.circe._
-import natchez.noop.NoopTrace
+import natchez.mtl.natchezMtlTraceForLocal
 import natchez.{EntryPoint, Span, Trace}
 import org.http4s.Method.GET
 import org.http4s._
@@ -65,11 +65,11 @@ object ConsulServiceDiscoveryAlg {
    * @tparam F the effect in which to operate
    * @return a new instance of `ConsulServiceDiscoveryAlg[F]`
    */
-  def apply[F[_] : Temporal : LoggerFactory : Random : Trace](consulBaseUri: Uri,
-                                                              longPollTimeout: FiniteDuration,
-                                                              client: Client[F],
-                                                              entryPoint: EntryPoint[F])
-                                                             (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
+  def apply[F[_] : Temporal : LoggerFactory : Random](consulBaseUri: Uri,
+                                                      longPollTimeout: FiniteDuration,
+                                                      client: Client[F],
+                                                      entryPoint: EntryPoint[F])
+                                                     (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
     make(consulBaseUri, longPollTimeout, client, entryPoint.some)
 
   /**
@@ -83,17 +83,17 @@ object ConsulServiceDiscoveryAlg {
    * @tparam F the effect in which to operate
    * @return a new instance of `ConsulServiceDiscoveryAlg[F]`
    */
-  def apply[F[_] : Temporal : LoggerFactory : Random : Trace](consulBaseUri: Uri,
-                                                              longPollTimeout: FiniteDuration,
-                                                              client: Client[F])
-                                                             (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
+  def apply[F[_] : Temporal : LoggerFactory : Random](consulBaseUri: Uri,
+                                                      longPollTimeout: FiniteDuration,
+                                                      client: Client[F])
+                                                     (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
     make(consulBaseUri, longPollTimeout, client, None)
 
-  private def make[F[_] : Temporal : LoggerFactory : Random : Trace](consulBaseUri: Uri,
-                                                                     longPollTimeout: FiniteDuration,
-                                                                     client: Client[F],
-                                                                     entryPoint: Option[EntryPoint[F]])
-                                                                    (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
+  private def make[F[_] : Temporal : LoggerFactory : Random](consulBaseUri: Uri,
+                                                             longPollTimeout: FiniteDuration,
+                                                             client: Client[F],
+                                                             entryPoint: Option[EntryPoint[F]])
+                                                            (implicit L: Local[F, Span[F]]): F[ConsulServiceDiscoveryAlg[F]] =
     LoggerFactory[F]
       .create(LoggerName("com.dwolla.consul.ConsulServiceDiscoveryAlg"))
       .map { implicit l =>
@@ -249,7 +249,7 @@ object ConsulServiceDiscoveryAlg {
                   F: Temporal[F],
                   L: LoggerFactory[F],
                   R: Random[F]): F[ConsulServiceDiscoveryAlg[F]] =
-    apply(consulBaseUri, longPollTimeout, client)(F, L, R, NoopTrace()(F), new BrokenIllegalNoopLocalSpan(F))
+    apply(consulBaseUri, longPollTimeout, client)(F, L, R, new BrokenIllegalNoopLocalSpan(F))
 
   @deprecated("maintained for binary compatibility: this version doesn't place background traces in the proper scope", "0.3.1")
   def apply[F[_]](consulBaseUri: Uri,
@@ -259,7 +259,7 @@ object ConsulServiceDiscoveryAlg {
                   L: LoggerFactory[F],
                   R: Random[F],
                   T: Trace[F]): F[ConsulServiceDiscoveryAlg[F]] =
-    apply(consulBaseUri, longPollTimeout, client)(F, L, R, T, new BrokenIllegalNoopLocalSpan(F))
+    apply(consulBaseUri, longPollTimeout, client)(F, L, R, new BrokenIllegalNoopLocalSpan(F))
 
   private class BrokenIllegalNoopLocalSpan[F[_]](A: Applicative[F]) extends Local[F, Span[F]] {
     override def local[A](fa: F[A])(f: Span[F] => Span[F]): F[A] = fa

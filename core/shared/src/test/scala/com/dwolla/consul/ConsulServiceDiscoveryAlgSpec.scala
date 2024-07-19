@@ -13,7 +13,6 @@ import io.circe.literal._
 import io.circe.syntax._
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import natchez.Span
-import natchez.mtl.natchezMtlTraceForLocal
 import org.http4s.Uri.Host
 import org.http4s._
 import org.http4s.circe._

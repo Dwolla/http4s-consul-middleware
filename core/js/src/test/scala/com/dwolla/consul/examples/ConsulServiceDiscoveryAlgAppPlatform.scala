@@ -2,7 +2,6 @@ package com.dwolla.consul.examples
 
 import cats.effect._
 import natchez.Span
-import natchez.mtl.natchezMtlTraceForLocal
 import natchez.noop.NoopEntrypoint
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
