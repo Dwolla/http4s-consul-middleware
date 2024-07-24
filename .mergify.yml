@@ -29,3 +29,11 @@ pull_request_rules:
       add:
       - core
       remove: []
+- name: Label smithy4s PRs
+  conditions:
+  - files~=^smithy4s/
+  actions:
+    label:
+      add:
+      - smithy4s
+      remove: []

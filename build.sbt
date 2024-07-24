@@ -27,7 +27,10 @@ ThisBuild / mergifySuccessConditions += MergifyCondition.Custom("#approved-revie
 
 lazy val log4catsVersion = "2.7.0"
 
-lazy val root = tlCrossRootProject.aggregate(`http4s-consul-middleware`)
+lazy val root = tlCrossRootProject.aggregate(
+  `http4s-consul-middleware`,
+  `smithy4s-consul-middleware`,
+)
 
 lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   .crossType(CrossType.Full)
@@ -78,4 +81,21 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
       "io.github.cquiroz" %%% "scala-java-time" % "2.6.0" % Test,
       "io.github.cquiroz" %%% "scala-java-time-tzdb" % "2.6.0" % Test,
     )
+  )
+
+lazy val `smithy4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("smithy4s"))
+  .settings(
+    description := "smithy4s middleware to rewrite URLs back to the consul://{service} format expected by http4s-consul-middleware",
+    tpolecatScalacOptions += ScalacOptions.release("8"),
+    tlVersionIntroduced := Map("3" -> "0.3.2", "2.12" -> "0.3.2", "2.13" -> "0.3.2"),
+    libraryDependencies ++= {
+      val http4sVersion = "0.23.27"
+
+      Seq(
+        "org.http4s" %%% "http4s-client" % http4sVersion,
+        "com.disneystreaming.smithy4s" %% "smithy4s-core" % "0.18.23",
+      )
+    },
   )
