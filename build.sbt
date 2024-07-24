@@ -99,3 +99,4 @@ lazy val `smithy4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
       )
     },
   )
+  .dependsOn(`http4s-consul-middleware`)
