@@ -1,7 +1,7 @@
 package com.dwolla.consul
 
+import cats.effect.syntax.all._
 import cats.effect.{Trace => _, _}
-import cats.effect.implicits.effectResourceOps
 import cats.syntax.all._
 import cats.~>
 import natchez.Trace
@@ -23,7 +23,8 @@ trait ConsulUriResolver[F[_]] { self =>
 
 object ConsulUriResolver {
   private final val name = "com.dwolla.consul.ConsulUriResolver"
-  def apply[F[_] : Async : LoggerFactory : Trace](backgroundResolver: ConsulServiceDiscoveryAlg[F]): Resource[F, ConsulUriResolver[F]] =
+
+  def apply[F[_] : Temporal : LoggerFactory : Trace](backgroundResolver: ConsulServiceDiscoveryAlg[F]): Resource[F, ConsulUriResolver[F]] =
     LoggerFactory[F]
       .create(LoggerName(name))
       .toResource
@@ -33,7 +34,7 @@ object ConsulUriResolver {
           .map(ConsulUriResolver(_))
       }
 
-  private[consul] def apply[F[_] : Async : Logger : Trace](backgroundResolver: KeyPool[F, ServiceName, F[Uri.Authority]]): ConsulUriResolver[F] =
+  private def apply[F[_] : MonadCancelThrow : Logger : Trace](backgroundResolver: KeyPool[F, ServiceName, F[Uri.Authority]]): ConsulUriResolver[F] =
     new ConsulUriResolver[F] {
       override def resolve(uri: Uri): F[Uri] = uri match {
         case Uri(Some(scheme), Some(Uri.Authority(_, service, _)), _, _, _) if scheme == scheme"consul" =>
@@ -64,4 +65,18 @@ object ConsulUriResolver {
                   L: LoggerFactory[F]): Resource[F, ConsulUriResolver[F]] =
     apply(backgroundResolver)(F, L, NoopTrace()(F))
 
+  @deprecated("maintained for binary compatibility: this version requires a higher capability constraint than is actually required", "0.3.2")
+  def apply[F[_]](backgroundResolver: ConsulServiceDiscoveryAlg[F],
+                  F: Async[F],
+                  L: LoggerFactory[F],
+                  T: Trace[F]): Resource[F, ConsulUriResolver[F]] =
+    apply(backgroundResolver)(F, L, T)
+
+  @deprecated("maintained for binary compatibility: this version requires a higher capability constraint than is actually required", "0.3.2")
+  private[consul] def apply[F[_]](backgroundResolver: KeyPool[F, ServiceName, F[Uri.Authority]],
+                                  F: Async[F],
+                                  L: Logger[F],
+                                  T: Trace[F]
+                                 ): ConsulUriResolver[F] =
+    apply(backgroundResolver)(using F, L, T)
 }
