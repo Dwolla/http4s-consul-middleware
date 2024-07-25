@@ -1,4 +1,5 @@
 import org.typelevel.scalacoptions.ScalacOptions
+import sbtcrossproject.CrossProject
 
 ThisBuild / crossScalaVersions := Seq("3.3.3", "2.13.14", "2.12.19")
 ThisBuild / scalaVersion := (ThisBuild / crossScalaVersions).value.head
@@ -26,10 +27,13 @@ ThisBuild / mergifyStewardConfig ~= { _.map {
 ThisBuild / mergifySuccessConditions += MergifyCondition.Custom("#approved-reviews-by>=1")
 
 lazy val log4catsVersion = "2.7.0"
+lazy val http4sVersion = "0.23.27"
+lazy val munitVersion = "1.0.0"
 
 lazy val root = tlCrossRootProject.aggregate(
   `http4s-consul-middleware`,
   `smithy4s-consul-middleware`,
+  `smithy4s-consul-middleware-tests`,
 )
 
 lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
@@ -40,9 +44,6 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
     tpolecatScalacOptions += ScalacOptions.release("8"),
     tlVersionIntroduced := Map("3" -> "0.3.1", "2.12" -> "0.0.1", "2.13" -> "0.0.1"),
     libraryDependencies ++= {
-      val http4sVersion = "0.23.27"
-      val munitVersion = "1.0.0"
-
       Seq(
         "org.http4s" %%% "http4s-client" % http4sVersion,
         "org.http4s" %%% "http4s-circe" % http4sVersion,
@@ -90,13 +91,42 @@ lazy val `smithy4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
     description := "smithy4s middleware to rewrite URLs back to the consul://{service} format expected by http4s-consul-middleware",
     tpolecatScalacOptions += ScalacOptions.release("8"),
     tlVersionIntroduced := Map("3" -> "0.3.2", "2.12" -> "0.3.2", "2.13" -> "0.3.2"),
-    libraryDependencies ++= {
-      val http4sVersion = "0.23.27"
-
-      Seq(
-        "org.http4s" %%% "http4s-client" % http4sVersion,
-        "com.disneystreaming.smithy4s" %% "smithy4s-core" % "0.18.23",
-      )
-    },
+    libraryDependencies ++= Seq(
+      "org.http4s" %%% "http4s-client" % http4sVersion,
+      "com.disneystreaming.smithy4s" %%% "smithy4s-core" % smithy4sVersion.value,
+    ),
+    Compile / smithy4sInputDirs := List(
+      baseDirectory.value.getParentFile / "src" / "main" / "smithy",
+    ),
+  )
+  .jsSettings(
+    crossScalaVersions := Seq("3.3.3", "2.13.14"),
   )
   .dependsOn(`http4s-consul-middleware`)
+  .enablePlugins(Smithy4sCodegenPlugin)
+
+// put the smithy4s-consul-middleware tests in a different project
+// because it has smithy files that we don't want to publish
+lazy val `smithy4s-consul-middleware-tests` = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("smithy4s-tests"))
+  .settings(
+    libraryDependencies ++= {
+      Seq(
+        "com.disneystreaming.smithy4s" %% "smithy4s-http4s" % smithy4sVersion.value % Test,
+        "org.scalameta" %%% "munit" % munitVersion % Test,
+        "org.typelevel" %%% "munit-cats-effect" % "2.0.0" % Test,
+        "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M1" % Test,
+        "org.http4s" %%% "http4s-dsl" % http4sVersion % Test,
+        "com.comcast" %%% "ip4s-test-kit" % "3.6.0" % Test,
+      )
+    },
+    Compile / smithy4sInputDirs := List(
+      baseDirectory.value.getParentFile / "src" / "main" / "smithy",
+    ),
+  )
+  .jsSettings(
+    crossScalaVersions := Seq("3.3.3", "2.13.14"),
+  )
+  .dependsOn(`smithy4s-consul-middleware`)
+  .enablePlugins(Smithy4sCodegenPlugin, NoPublishPlugin)
