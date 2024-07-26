@@ -2,6 +2,7 @@ package com.dwolla.consul.smithy4s
 
 import cats.effect.syntax.all._
 import cats.effect.{Trace => _, _}
+import com.dwolla.consul.smithy._
 import com.dwolla.consul.{ConsulServiceDiscoveryAlg, ConsulUriResolver}
 import natchez.Trace
 import org.http4s.Request
@@ -9,7 +10,6 @@ import org.http4s.client.Client
 import org.http4s.syntax.all._
 import org.typelevel.log4cats.LoggerFactory
 import smithy4s.{Endpoint, Service}
-import com.dwolla.consul.smithy._
 
 /**
  * A Smithy4s middleware to rewrite URIs where the Authority section is a Consul service name.
@@ -44,9 +44,9 @@ class ConsulMiddleware[F[_] : MonadCancelThrow](resolver: ConsulUriResolver[F]) 
         case Some(Discoverable(ServiceName(serviceName))) if req.uri.authority.map(_.host.value).contains(serviceName) =>
           resolver.resolve(req.uri.copy(scheme = Option(scheme"consul")))
             .toResource
-            .flatMap { uri =>
-              client.run(req.withUri(uri))
-            }
+            .map(req.withUri)
+            .flatMap(client.run)
+
         case _ => client.run(req)
       }
     }
