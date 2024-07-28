@@ -1,8 +1,14 @@
+import org.typelevel.sbt.gha.MatrixExclude
 import org.typelevel.scalacoptions.ScalacOptions
-import sbtcrossproject.CrossProject
 
 ThisBuild / crossScalaVersions := Seq("3.3.3", "2.13.14", "2.12.19")
 ThisBuild / scalaVersion := (ThisBuild / crossScalaVersions).value.head
+ThisBuild / githubWorkflowBuildMatrixExclusions := Seq(
+  MatrixExclude(Map(
+    "scala" -> "2.12",
+    "project" -> "rootJS",
+  )),
+)
 ThisBuild / organization := "com.dwolla"
 ThisBuild / homepage := Some(url("https://github.com/Dwolla/http4s-consul-middleware"))
 ThisBuild / licenses += ("MIT", url("https://opensource.org/licenses/MIT"))
@@ -100,7 +106,8 @@ lazy val `smithy4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
     ),
   )
   .jsSettings(
-    crossScalaVersions := Seq("3.3.3", "2.13.14"),
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    crossScalaVersions ~= (_.filterNot(_.startsWith("2.12"))),
   )
   .dependsOn(`http4s-consul-middleware`)
   .enablePlugins(Smithy4sCodegenPlugin)
@@ -113,7 +120,7 @@ lazy val `smithy4s-consul-middleware-tests` = crossProject(JSPlatform, JVMPlatfo
   .settings(
     libraryDependencies ++= {
       Seq(
-        "com.disneystreaming.smithy4s" %% "smithy4s-http4s" % smithy4sVersion.value % Test,
+        "com.disneystreaming.smithy4s" %%% "smithy4s-http4s" % smithy4sVersion.value % Test,
         "org.scalameta" %%% "munit" % munitVersion % Test,
         "org.typelevel" %%% "munit-cats-effect" % "2.0.0" % Test,
         "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M1" % Test,
@@ -126,7 +133,8 @@ lazy val `smithy4s-consul-middleware-tests` = crossProject(JSPlatform, JVMPlatfo
     ),
   )
   .jsSettings(
-    crossScalaVersions := Seq("3.3.3", "2.13.14"),
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    crossScalaVersions ~= (_.filterNot(_.startsWith("2.12"))),
   )
   .dependsOn(`smithy4s-consul-middleware`)
   .enablePlugins(Smithy4sCodegenPlugin, NoPublishPlugin)

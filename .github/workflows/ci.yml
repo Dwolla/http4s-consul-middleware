@@ -31,6 +31,9 @@ jobs:
         scala: [3, 2.13, 2.12]
         java: [temurin@17]
         project: [rootJS, rootJVM]
+        exclude:
+          - scala: 2.12
+            project: rootJS
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -157,16 +160,6 @@ jobs:
           name: target-${{ matrix.os }}-${{ matrix.java }}-2.13-rootJVM
 
       - name: Inflate target directories (2.13, rootJVM)
-        run: |
-          tar xf targets.tar
-          rm targets.tar
-
-      - name: Download target directories (2.12, rootJS)
-        uses: actions/download-artifact@v4
-        with:
-          name: target-${{ matrix.os }}-${{ matrix.java }}-2.12-rootJS
-
-      - name: Inflate target directories (2.12, rootJS)
         run: |
           tar xf targets.tar
           rm targets.tar
