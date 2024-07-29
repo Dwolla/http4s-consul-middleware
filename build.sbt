@@ -123,7 +123,7 @@ lazy val `smithy4s-consul-middleware-tests` = crossProject(JSPlatform, JVMPlatfo
         "com.disneystreaming.smithy4s" %%% "smithy4s-http4s" % smithy4sVersion.value % Test,
         "org.scalameta" %%% "munit" % munitVersion % Test,
         "org.typelevel" %%% "munit-cats-effect" % "2.0.0" % Test,
-        "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M1" % Test,
+        "org.typelevel" %%% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
         "org.http4s" %%% "http4s-dsl" % http4sVersion % Test,
         "com.comcast" %%% "ip4s-test-kit" % "3.6.0" % Test,
       )
