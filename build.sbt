@@ -34,7 +34,7 @@ ThisBuild / mergifySuccessConditions += MergifyCondition.Custom("#approved-revie
 
 lazy val log4catsVersion = "2.7.0"
 lazy val http4sVersion = "0.23.27"
-lazy val munitVersion = "1.0.0"
+lazy val munitVersion = "1.0.1"
 
 lazy val root = tlCrossRootProject.aggregate(
   `http4s-consul-middleware`,
@@ -68,7 +68,7 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
         "org.http4s" %%% "http4s-dsl" % http4sVersion % Test,
         "org.http4s" %%% "http4s-laws" % http4sVersion % Test,
         "org.scalameta" %%% "munit" % munitVersion % Test,
-        "org.scalameta" %%% "munit-scalacheck" % munitVersion % Test,
+        "org.scalameta" %%% "munit-scalacheck" % "1.0.0" % Test,
         "com.comcast" %%% "ip4s-test-kit" % "3.6.0" % Test,
       ) ++ (if (scalaVersion.value.startsWith("2.")) Seq(
         compilerPlugin("org.typelevel" %% "kind-projector" % "0.13.3" cross CrossVersion.full),
