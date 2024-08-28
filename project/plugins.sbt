@@ -1,4 +1,4 @@
-addSbtPlugin("org.typelevel" % "sbt-tpolecat" % "0.5.1")
+addSbtPlugin("org.typelevel" % "sbt-tpolecat" % "0.5.2")
 addSbtPlugin("org.typelevel" % "sbt-typelevel-ci-release" % "0.7.2")
 addSbtPlugin("org.typelevel" % "sbt-typelevel-mergify" % "0.7.2")
 addSbtPlugin("org.portable-scala" % "sbt-crossproject" % "1.3.2")
