@@ -1,7 +1,9 @@
 package com.dwolla
 
+import cats._
 import io.circe.Encoder
 import monix.newtypes.NewtypeWrapped
+import natchez.TraceableValue
 import org.http4s.Header.Single
 import org.http4s.QueryParamDecoder.fromUnsafeCast
 import org.http4s._
@@ -28,6 +30,7 @@ package consul {
       Some(ServiceName(str))
 
     implicit val serviceNameEncoder: Encoder[ServiceName] = Encoder[String].contramap(_.value)
+    implicit val serviceNameTraceableValue: TraceableValue[ServiceName] = TraceableValue.stringToTraceValue.contramap(_.value)
   }
 
   /* The Consul documentation (https://developer.hashicorp.com/consul/api-docs/features/blocking#implementation-details) says
@@ -48,6 +51,11 @@ package consul {
     implicit val consulIndexQueryParam: QueryParam[ConsulIndex] = QueryParam.fromKey("index")
     implicit val consulIndexQueryParamEncoder: QueryParamEncoder[ConsulIndex] = QueryParamEncoder[Long].contramap(_.value)
     implicit val consulIndexQueryParamDecoder: QueryParamDecoder[ConsulIndex] = QueryParamDecoder[Long].map(ConsulIndex(_))
+    implicit val consulIndexTraceableValue: TraceableValue[ConsulIndex] = TraceableValue.longToTraceValue.contramap(_.value)
+    implicit val consulIndexOrdering: Order[ConsulIndex] = Order.by(_.value)
+    implicit class ConsulIndexIncrement(val idx: ConsulIndex) extends AnyVal {
+      @inline def increment: ConsulIndex = ConsulIndex(idx.value + 1)
+    }
   }
 
   object WaitPeriod extends NewtypeWrapped[FiniteDuration] {
@@ -67,5 +75,7 @@ package consul {
           WaitPeriod(seconds.seconds)
         case other => throw new MatchError(other)
       }}("WaitPeriod")
+    implicit val waitPeriodTraceableValue: TraceableValue[WaitPeriod] =
+      TraceableValue.stringToTraceValue.contramap(wp => s"${wp.value.toMillis} ms")
   }
 }

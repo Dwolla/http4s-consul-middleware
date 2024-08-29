@@ -1,18 +1,26 @@
 package com.dwolla.consul
 
+import cats._
+import cats.data._
+import cats.effect._
 import cats.effect.std._
 import cats.effect.syntax.all._
-import cats.effect.{IO, IOLocal, Temporal}
+import cats.effect.testkit.TestControl
 import cats.syntax.all._
 import com.comcast.ip4s.Arbitraries._
 import com.comcast.ip4s.{IpAddress, Port}
+import com.dwolla.consul.ConsulApi.Service._
+import com.dwolla.consul.ConsulApi.ServiceProgression
 import com.dwolla.consul.arbitraries._
 import com.dwolla.consul.examples.LocalTracing
-import io.circe.Encoder
 import io.circe.literal._
 import io.circe.syntax._
+import io.circe.{Encoder, Json}
+import fs2._
+import fs2.concurrent.SignallingRef
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import natchez.Span
+import natchez.noop.NoopEntrypoint
 import org.http4s.Uri.Host
 import org.http4s._
 import org.http4s.circe._
@@ -21,26 +29,26 @@ import org.http4s.dsl.Http4sDsl
 import org.http4s.laws.discipline.arbitrary.http4sTestingArbitraryForUri
 import org.http4s.syntax.all._
 import org.scalacheck.Arbitrary.arbitrary
-import org.scalacheck.effect.PropF
 import org.scalacheck._
+import org.scalacheck.effect.PropF
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
 
 import scala.concurrent.duration._
+import scala.util
 
 class ConsulServiceDiscoveryAlgSpec
   extends CatsEffectSuite
     with ScalaCheckEffectSuite
     with cats.effect.std.ArbitraryRandom
     with LocalTracing {
-
-  private implicit val noopLoggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
+  implicit val loggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
 
   test("Consul service lookup URI construction") {
     Prop.forAll { (consulBase: Uri,
                    serviceName: ServiceName,
                    index: Option[ConsulIndex],
-                   longPollTimeout: FiniteDuration) => 
+                   longPollTimeout: FiniteDuration) =>
       val output = ConsulServiceDiscoveryAlg.serviceListUri(consulBase, serviceName, index, longPollTimeout)
 
       val expected =
@@ -62,39 +70,125 @@ class ConsulServiceDiscoveryAlgSpec
     PropF.forAllF { (services: Vector[ConsulApi.Service],
                      randomInstance: Random[IO],
                     ) =>
-      val http4sClient: Client[IO] = Client.fromHttpApp(new ConsulApi[IO](services).app)
       implicit val random: Random[IO] = randomInstance
 
-      IOLocal(Span.noop[IO]).flatMap { implicit ioLocal =>
-        for {
-          alg <- ConsulServiceDiscoveryAlg(uri"/", 5.seconds, http4sClient)
-          serviceName <- Random[IO].shuffleVector(services).map(_.headOption.map(_.name).getOrElse(ServiceName("missing")))
-          output <- alg.authoritiesForService(serviceName).use(_.delayBy(10.millis)) // delay a bit to make sure the background request is also made
-          expected = services.collect {
-            case ConsulApi.Service(`serviceName`, host, port, true) =>
-              Uri.Authority(None, Host.fromIpAddress(host), port.value.some)
+      val program = ConsulApi[IO](NonEmptyChain.of(services), 10.seconds)
+        .map(consulApi => Client.fromHttpApp(consulApi.app))
+        .use { http4sClient =>
+          IOLocal(Span.noop[IO]).flatMap { implicit ioLocal =>
+            for {
+              alg <- ConsulServiceDiscoveryAlg(uri"/", 5.seconds, http4sClient)
+              serviceName <- Random[IO].shuffleVector(services).map(_.headOption.map(_.name).getOrElse(ServiceName("missing")))
+              output <- alg.authoritiesForService(serviceName).use(_.delayBy(10.millis)) // delay a bit to make sure the background request is also made
+              expected = services.collect {
+                case ConsulApi.Service(`serviceName`, host, port, true) =>
+                  Uri.Authority(None, Host.fromIpAddress(host), port.value.some)
+              }
+            } yield {
+              assertEquals(output, expected)
+            }
           }
-        } yield {
-          assertEquals(output, expected)
-        }
       }
+
+      TestControl.executeEmbed(program)
+    }
+  }
+
+
+  test("authorityForService returns a randomly selected instance, and blocks when no instances are available") {
+    val forceHealthy = true.some
+    val entryPoint = NoopEntrypoint[IO]()
+
+    PropF.forAllF { (serviceName: ServiceName,
+                     serviceProgressionGenerator: ServiceProgression,
+                     randomInstance: Random[IO],
+                    ) =>
+      implicit val random: Random[IO] = randomInstance
+
+      val serviceProgression = serviceProgressionGenerator(serviceName, forceHealthy)
+
+      val program =
+        entryPoint
+          .root("authorityForService returns a randomly selected instance, and blocks when no instances are available")
+          .evalMap(IOLocal(_))
+          .flatMap { implicit ioLocal =>
+            ConsulApi[IO](serviceProgression, stateChangeRate = 10.seconds)
+              .map(consulApi => Client.fromHttpApp(consulApi.app))
+              .evalMap(ConsulServiceDiscoveryAlg(uri"/", longPollTimeout = 5.seconds, _, entryPoint))
+              .flatMap(_.authorityForService(serviceName))
+          }
+          .use { getRandomAuthority =>
+            serviceProgression.traverse(_ => getRandomAuthority)
+          }
+
+      TestControl.executeEmbed(program)
+        .map { output =>
+          // TODO could we do more assertions? it's not obvious how because the selected instances will be randomly picked
+          assertEquals(output.length, serviceProgression.length)
+        }
     }
   }
 }
 
 object ConsulApi {
+  type ServiceProgression = (ServiceName, Option[Boolean]) => NonEmptyChain[Vector[ConsulApi.Service]]
+
   case class Service(name: ServiceName, address: IpAddress, port: Port, isHealthy: Boolean)
 
   object Service {
-    val genService: Gen[Service] =
+    implicit val showService: Show[Service] = Show.fromToString
+    implicit val eqService: Eq[Service] = Eq.fromUniversalEquals
+
+    val genService: Gen[(ServiceName, Option[Boolean]) => Service] =
       for {
-        serviceName <- arbitrary[ServiceName]
         address <- arbitrary[IpAddress]
         port <- arbitrary[Port]
         healthy <- arbitrary[Boolean]
-      } yield Service(serviceName, address, port, healthy)
+      } yield { (serviceName: ServiceName, healthOverride: Option[Boolean]) =>
+        Service(serviceName, address, port, healthOverride.getOrElse(healthy))
+      }
 
-    implicit val arbService: Arbitrary[Service] = Arbitrary(genService)
+    implicit val arbService: Arbitrary[Service] = Arbitrary {
+      arbitrary[ServiceName].flatMap { (sn: ServiceName) =>
+        genService.map(_(sn, None))
+      }
+    }
+
+    val genServiceListThatMayContainTheGivenName: Gen[(ServiceName, Option[Boolean]) => Vector[Service]] =
+      for {
+        namedGen <- Gen.option(genService)
+        otherServices <- Gen.listOf(arbService.arbitrary)
+        random <- arbitrary[Long].map(new util.Random(_))
+      } yield { (serviceName: ServiceName, healthOverride: Option[Boolean]) =>
+        val namedService: Option[Service] = namedGen.map(_(serviceName, healthOverride))
+
+        random.shuffle(namedService.foldl(Vector.newBuilder[Service])(_ += _).++=(otherServices).result())
+      }
+
+    val genServiceListThatDoesContainTheGivenName: Gen[(ServiceName, Option[Boolean]) => Vector[Service]] =
+      for {
+        namedGen <- genService
+        otherServices <- Gen.listOf(arbService.arbitrary)
+        random <- arbitrary[Long].map(new util.Random(_))
+      } yield { (serviceName: ServiceName, healthOverride: Option[Boolean]) =>
+        val namedService: Service = namedGen(serviceName, healthOverride)
+
+        random.shuffle(Vector.newBuilder[Service].+=(namedService).++=(otherServices).result())
+      }
+
+    val genServiceProgression: Gen[ServiceProgression] =
+      for {
+        last <- genServiceListThatDoesContainTheGivenName
+        others <- Gen.listOf(genServiceListThatMayContainTheGivenName)
+      } yield { (serviceName: ServiceName, healthOverride: Option[Boolean]) =>
+        NonEmptyChain
+          .one(last)
+          .prependChain(Chain.fromSeq(others)) // prepend the others so we always finish in a state where we have a service of the given name
+          .map(_(serviceName, healthOverride))
+      }
+
+    implicit val arbServiceProgression: Arbitrary[ServiceProgression] =
+      Arbitrary(genServiceProgression)
 
     implicit val encoder: Encoder[Service] = a =>
       json"""{
@@ -111,23 +205,74 @@ object ConsulApi {
           ]
         }"""
   }
+
+  class PartiallyAppliedConsulApi[F[_]](val dummy: Unit = ()) extends AnyVal {
+    def apply[G[_] : Foldable : FunctorFilter](services: NonEmptyChain[G[Service]],
+                                               stateChangeRate: FiniteDuration,
+                                              )(implicit F: Temporal[F],
+                                                E: Eq[G[ConsulApi.Service]],
+                                              ): Resource[F, ConsulApi[F]] =
+      Supervisor[F].flatMap { supervisor =>
+        Resource.eval(SignallingRef[F].of((services.head, ConsulIndex(1L))))
+          .evalMap { ref =>
+            supervisor.supervise {
+              Stream.emits(services.tail.toList)
+                .metered[F](stateChangeRate)
+                .zipWith(Stream.unfold(ConsulIndex(2L) /* start at 2 because this will be the first updated value */) { idx =>
+                  (idx, idx.increment).some
+                })((a, b) => a -> b)
+                .evalMap(ref.set)
+                .compile
+                .drain
+            }.as(new ConsulApiImpl(ref))
+          }
+      }
+  }
+
+  def apply[F[_]] = new PartiallyAppliedConsulApi[F]()
 }
 
-class ConsulApi[F[_] : Temporal](services: Vector[ConsulApi.Service]) extends Http4sDsl[F] {
+trait ConsulApi[F[_]] {
+  def routes: HttpRoutes[F]
+  def app: HttpApp[F]
+}
+
+private class ConsulApiImpl[F[_] : Temporal, G[_] : Foldable : FunctorFilter](state: SignallingRef[F, (G[ConsulApi.Service], ConsulIndex)])
+                                                                             (implicit E: Eq[G[ConsulApi.Service]])
+  extends ConsulApi[F]
+    with Http4sDsl[F] {
+
   object OnlyHealthyServices extends FlagQueryParamMatcher("passing")
-  object ConsulIndex extends OptionalQueryParamDecoderMatcher[com.dwolla.consul.ConsulIndex]("index")
+  object ConsulIndexParam extends OptionalQueryParamDecoderMatcher[com.dwolla.consul.ConsulIndex]("index")
   object WaitPeriod extends OptionalQueryParamDecoderMatcher[com.dwolla.consul.WaitPeriod]("wait")
 
-  def routes: HttpRoutes[F] = HttpRoutes.of {
-    case GET -> Root / "v1" / "health" / "service" / serviceName :? OnlyHealthyServices(true) :? ConsulIndex(idx) :? WaitPeriod(timeout) =>
-      val json = services.filter {
-        case ConsulApi.Service(ServiceName(`serviceName`), _, _, true) => true
-        case _ => false
-      }.asJson
+  private def servicesAsJson(services: G[ConsulApi.Service],
+                             serviceName: ServiceName): Json =
+    services.filter {
+      case ConsulApi.Service(`serviceName`, _, _, isHealthy) => isHealthy
+      case _ => false
+    }.asJson(Encoder.encodeFoldable)
 
-      val consulIndex = idx.getOrElse(com.dwolla.consul.ConsulIndex(1L))
+  override def routes: HttpRoutes[F] = HttpRoutes.of {
+    case GET -> Root / "v1" / "health" / "service" / serviceName :? OnlyHealthyServices(true) :? ConsulIndexParam(idx) :? WaitPeriod(timeout) =>
+      state.changes.getAndDiscreteUpdates.use {
+        case ((services, currentIndex), _) if idx.exists(_ < currentIndex) =>
+          // return immediately regardless of wait
+          Ok(servicesAsJson(services, ServiceName(serviceName)), currentIndex)
 
-      timeout.map(_.value).foldLeft(Ok(json, consulIndex))(_.delayBy(_))
+        case ((services, currentIndex), updates) =>
+          // if the wait timeout is set, wait to respond until a state change happens or the timeout expires.
+          // otherwise respond immediately with the current state
+          timeout
+            .map(_.value)
+            .flatTraverse(updates.head.compile.last.timeoutTo(_, none[(G[ConsulApi.Service], ConsulIndex)].pure[F]))
+            .flatMap {
+              case Some((services, nextIndex)) =>
+                Ok(servicesAsJson(services, ServiceName(serviceName)), nextIndex)
+              case None =>
+                Ok(servicesAsJson(services, ServiceName(serviceName)), currentIndex)
+            }
+      }
   }
 
   def app: HttpApp[F] = routes.orNotFound

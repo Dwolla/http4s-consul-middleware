@@ -2,7 +2,7 @@ package com.dwolla.consul
 
 import cats.data.OptionT
 import cats.effect.kernel.Resource.ExitCase
-import cats.effect.std.Random
+import cats.effect.std.{Random, Supervisor}
 import cats.effect.syntax.all._
 import cats.effect.{Trace => _, _}
 import cats.mtl.Local
@@ -10,8 +10,9 @@ import cats.syntax.all._
 import cats.{Applicative, Monad, ~>}
 import com.dwolla.consul.ThirdPartyTypeCodecs._
 import fs2.Stream
+import fs2.concurrent.Signal
 import io.circe._
-import natchez.mtl.natchezMtlTraceForLocal
+import natchez.mtl._
 import natchez.{EntryPoint, Span, Trace}
 import org.http4s.Method.GET
 import org.http4s._
@@ -31,8 +32,12 @@ trait ConsulServiceDiscoveryAlg[F[_]] { self =>
   def authoritiesForService(serviceName: ServiceName): Resource[F, F[Vector[Uri.Authority]]]
 
   /**
-   * Using [[authoritiesForService]] as the source of available instances, picks one at random to return each time the
-   * `F[Uri.Authority]` effect is executed.
+   * Starts a background process that will continually refresh the set of available instances of the given service.
+   * The background process will live as long as the `cats.effect.Resource[F, F[Uri.Authority]]` is in scope.
+   * From the set of available instances, one will be selected randomly and returned each time the `F[Uri.Authority]`
+   * effect is executed.
+   *
+   * If no instances are available, the getter semantically blocks until one is available.
    *
    * @return a `cats.effect.Resource[F, F[Uri.Authority]]` containing an effect that, when executed, contains a randomly selected instance, taken from the current set of available instances
    */
@@ -50,6 +55,205 @@ trait ConsulServiceDiscoveryAlg[F[_]] { self =>
         .map(fk(_))
         .mapK(fk)
   }
+}
+
+private class ConsulServiceDiscoveryAlgImpl[F[_] : Temporal : Logger : Random](consulBaseUri: Uri,
+                                                                               longPollTimeout: FiniteDuration,
+                                                                               client: Client[F],
+                                                                               entryPoint: Option[EntryPoint[F]])
+                                                                              (implicit L: Local[F, Span[F]]) extends ConsulServiceDiscoveryAlg[F] {
+  private sealed trait ConsulState
+  private object ConsulState {
+    def await: F[AwaitingValue] = Deferred[F, Vector[Uri.Authority]].map(AwaitingValue(_))
+  }
+  private case class KnownValue(uris: Vector[Uri.Authority]) extends ConsulState
+  private case class AwaitingValue(deferred: Deferred[F, Vector[Uri.Authority]]) extends ConsulState
+
+  private def buildStateRef(uriAuthoritySignal: Signal[F, Vector[Uri.Authority]],
+                            supervisor: Supervisor[F],
+                           ): F[Ref[F, ConsulState]] =
+    ConsulState.await
+      .flatMap(Ref[F].of[ConsulState])
+      .flatTap { stateRef =>
+        supervisor.supervise {
+          uriAuthoritySignal
+            .discrete
+            .evalMap[F, Unit] {
+              case v if v.isEmpty =>
+                ConsulState.await // construct a new AwaitingValue in case we need to reset below
+                  .flatMap { (nextAwait: AwaitingValue) =>
+                    stateRef.update {
+                      case KnownValue(_) =>
+                        // we had a value, but now we don't, so reset
+                        nextAwait
+                      case stay@AwaitingValue(_) =>
+                        // we don't have a value, so discard the AwaitingValue we created and use the old one
+                        stay
+                    }
+                  }
+              case services =>
+                stateRef.flatModify {
+                  case KnownValue(_) =>
+                    // we had a previous known value, so replace it with the new value and don't do anything else
+                    KnownValue(services) -> Applicative[F].unit
+                  case AwaitingValue(d) =>
+                    // state transition into KnownValue and complete the waiting Deferred with the new value
+                    KnownValue(services) -> d.complete(services).void
+                }
+            }
+            .compile
+            .drain
+        }
+      }
+
+  override def authorityForService(serviceName: ServiceName): Resource[F, F[Uri.Authority]] =
+    Supervisor[F].flatMap { supervisor =>
+      continuallyUpdating(serviceName, consulBaseUri, longPollTimeout, client, entryPoint)
+        .evalMap[F[Uri.Authority]] {
+          buildStateRef(_, supervisor).map { // the getter needs to stay in F, so don't flatMap here!
+            _.get.flatMap[Vector[Uri.Authority]] {
+                case KnownValue(services) =>
+                  services.pure[F]
+                case AwaitingValue(d) =>
+                  Trace[F].span("awaiting_service_availability") {
+                    Trace[F].put("peer.service" -> serviceName) >> d.get
+                  }
+              }
+              .flatMap { services =>
+                Random[F]
+                  .betweenInt(0, services.length)
+                  .map(services(_))
+              }
+          }
+        }
+        .onFinalize(Logger[F].trace(s"👋 shutting down authorityForService($serviceName)"))
+    }
+
+  override def authoritiesForService(serviceName: ServiceName): Resource[F, F[Vector[Uri.Authority]]] =
+    continuallyUpdating(serviceName, consulBaseUri, longPollTimeout, client, entryPoint)
+      .map(_.get)
+      .onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)"))
+
+  /**
+   * Makes a request of the Consul API to retrieve the set of healthy instances for the given service.
+   *
+   * @param serviceName the service to look up in the Consul API
+   * @param consulBase the base URI where the Consul API can be accessed, e.g. [[http://localhost:8500]]
+   * @param index the index of the last known Consul state. If provided, Consul will interpret the request as a blocking query, and no response will be returned until Consul's state changes, or the [[longPollTimeout]] expires
+   * @param longPollTimeout the maximum amount of time to wait before Consul should return a response
+   * @param client the `org.http4s.client.Client[F]` used to interact with the Consul API. Should be configured not to timeout on blocking queries
+   * @return a `Vector` containing the currently available instances of the service, and optionally the Consul state index
+   */
+  private def lookup(serviceName: ServiceName,
+                     consulBase: Uri,
+                     index: Option[ConsulIndex],
+                     longPollTimeout: FiniteDuration,
+                     client: Client[F],
+                    ): F[(Vector[Uri.Authority], Option[ConsulIndex])] = {
+    val requestUri = ConsulServiceDiscoveryAlg.serviceListUri(consulBase, serviceName, index, longPollTimeout)
+
+    Logger[F].trace(s"📡 getting services for $serviceName from $requestUri") >>
+      Trace[F].span("com.dwolla.consul.ConsulServiceDiscoveryAlg.lookup") {
+        val req = Request[F](GET, requestUri)
+
+        Trace[F].put(
+          "serviceName" -> serviceName.value,
+          "consulBase" -> consulBase.toString(),
+          "client.http.uri" -> req.uri.toString(),
+          "client.http.method" -> req.method.toString,
+        ) >>
+          client
+            .run(req)
+            .onFinalizeCase(logFinalizeCase(serviceName))
+            .onFinalizeCase(traceFinalizeCase)
+            .use { resp =>
+              Logger[F].trace(s"📠 ${AnsiColorCodes.red}Consul response ${AnsiColorCodes.reset}") >>
+                resp
+                  .as[Json]
+                  .map {
+                    _
+                      .asArray
+                      .toVector
+                      .flatten
+                      .flatMap {
+                        _.asObject
+                          .flatMap(_("Service"))
+                          .flatMap(_.as[Uri.Authority].toOption)
+                          .toVector
+                      }
+                  }
+//                  .flatTap(v => Logger[F].trace(s"🛰 got $v from Consul"))
+                  .tupleRight(resp.headers.get[ConsulIndex])
+            }
+            .timeout(longPollTimeout + 1.second)
+            .handleErrorWith { ex =>
+              Logger[F].error(ex)(s"📠 ${AnsiColorCodes.red}Consul response error ${AnsiColorCodes.reset}") >> ex.raiseError
+            }
+      }
+  }
+
+  private def traceFinalizeCase: ExitCase => F[Unit] =
+    exitCase => Trace[F].put("ExitCase" -> exitCase.toString)
+
+  private def logFinalizeCase(serviceName: ServiceName): ExitCase => F[Unit] = {
+    case Resource.ExitCase.Succeeded => Logger[F].trace(s"👋 finalized Succeeded lookup($serviceName, …).client.run")
+    case Resource.ExitCase.Errored(e) => Logger[F].trace(e)(s"👋 finalized Errored lookup($serviceName, …).client.run")
+    case Resource.ExitCase.Canceled => Logger[F].trace(s"👋 finalized Canceled lookup($serviceName, …).client.run")
+  }
+
+  /**
+   * Starts a background process tied to the scope of the returned `Resource` that will
+   * long-poll the Consul API for updates to the set of available instances of the given
+   * named service.
+   *
+   * @param serviceName the service to look up in the Consul API
+   * @param consulBase the base URI where the Consul API can be accessed, e.g. [[http://localhost:8500]]
+   * @param longPollTimeout the maximum amount of time to wait before Consul should return a response
+   * @param client the `org.http4s.client.Client[F]` used to interact with the Consul API. Should be configured not to timeout on blocking queries
+   * @param entryPoint an optional EntryPoint used to construct new traces for background requests. If none, a no-op span is used instead.
+   * @return a `cats.effect.Resource` managing the background process and containing an effect to view the current set of available instances
+   */
+  private def continuallyUpdating(serviceName: ServiceName,
+                                  consulBase: Uri,
+                                  longPollTimeout: FiniteDuration,
+                                  client: Client[F],
+                                  entryPoint: Option[EntryPoint[F]],
+                                 ): Resource[F, Signal[F, Vector[Uri.Authority]]] =
+    Stream.unfoldEval(none[ConsulIndex]) { maybeIndex =>
+        inNewLinkedRootSpan(entryPoint) { // since this is a background task, it doesn't make sense
+                                          // to directly attach it to the trace that initially started it,
+                                          // but linking it to the new root span is helpful
+          lookup(serviceName, consulBase, maybeIndex, longPollTimeout, client)
+            .map(_.leftMap(_.some)) // if we successfully got values, wrap them in Some so we can unNone later
+            .handleErrorWith {
+              // TODO maybe we should introduce some kind of escalating delay here?
+              Logger[F].warn(_)("🔥 An exception occurred getting service details from Consul; retrying")
+                .as((none[Vector[Uri.Authority]], maybeIndex)) // continue successfully, but emit None so the failure can be filtered out later
+            }
+            .map(_.some) // this stream will unfold forever (well, until its Resource is finalized)
+        }
+      }
+      .unNone          // errors returned by `lookup` are emitted as None, so filter them out
+      .hold1Resource
+      .map(_.changes)
+      .onFinalize(Logger[F].trace(s"👋 shutting down continuallyUpdating($serviceName, …)"))
+
+  private def inNewLinkedRootSpan[A](entryPoint: Option[EntryPoint[F]])
+                                    (fa: F[A]): F[A] =
+    OptionT.fromOption[Resource[F, *]](entryPoint)
+      .semiflatMap { ep =>
+        Trace[F]
+          .kernel
+          .map(Span.Options.Defaults.withLink)
+          .toResource
+          .flatMap {
+            ep.root("com.dwolla.consul.ConsulServiceDiscoveryAlg.continuallyUpdating", _)
+          }
+      }
+      .getOrElse(Span.noop)
+      .use(Local[F, Span[F]].scope(fa))
+
+  private implicit def jsonEntityDecoder[A: Decoder]: EntityDecoder[F, A] = jsonOf[F, A]
 }
 
 object ConsulServiceDiscoveryAlg {
@@ -97,141 +301,8 @@ object ConsulServiceDiscoveryAlg {
     LoggerFactory[F]
       .create(LoggerName("com.dwolla.consul.ConsulServiceDiscoveryAlg"))
       .map { implicit l =>
-        new AbstractConsulServiceDiscoveryAlg[F] {
-          override def authoritiesForService(serviceName: ServiceName): Resource[F, F[Vector[Uri.Authority]]] =
-            lookup[F](serviceName, consulBaseUri, None, longPollTimeout, client)
-              .toResource
-              .flatMap { case (initialValue, initialConsulIndex) =>
-                continuallyUpdating(serviceName, initialValue, initialConsulIndex, consulBaseUri, longPollTimeout, client, entryPoint)
-              }
-              .onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)"))
-        }
+        new ConsulServiceDiscoveryAlgImpl(consulBaseUri, longPollTimeout, client, entryPoint)
       }
-
-  /**
-   * Makes a request of the Consul API to retrieve the set of healthy instances for the given service.
-   *
-   * @param serviceName the service to look up in the Consul API
-   * @param consulBase the base URI where the Consul API can be accessed, e.g. [[http://localhost:8500]]
-   * @param index the index of the last known Consul state. If provided, Consul will interpret the request as a blocking query, and no response will be returned until Consul's state changes, or the [[longPollTimeout]] expires
-   * @param longPollTimeout the maximum amount of time to wait before Consul should return a response
-   * @param client the `org.http4s.client.Client[F]` used to interact with the Consul API. Should be configured not to timeout on blocking queries
-   * @return a `Vector` containing the currently available instances of the service, and optionally the Consul state index
-   */
-  private def lookup[F[_] : Temporal : Logger : Trace](serviceName: ServiceName,
-                                                       consulBase: Uri,
-                                                       index: Option[ConsulIndex],
-                                                       longPollTimeout: FiniteDuration,
-                                                       client: Client[F],
-                                                      ): F[(Vector[Uri.Authority], Option[ConsulIndex])] = {
-    val requestUri = serviceListUri(consulBase, serviceName, index, longPollTimeout)
-
-    Logger[F].trace(s"📡 getting services for $serviceName from $requestUri") >>
-      Trace[F].span("com.dwolla.consul.ConsulServiceDiscoveryAlg.lookup") {
-        val req = Request[F](GET, requestUri)
-
-        Trace[F].put(
-          "serviceName" -> serviceName.value,
-          "consulBase" -> consulBase.toString(),
-          "client.http.uri" -> req.uri.toString(),
-          "client.http.method" -> req.method.toString,
-        ) >>
-          client
-            .run(req)
-            .onFinalizeCase(logFinalizeCase(serviceName))
-            .onFinalizeCase(traceFinalizeCase)
-            .use { resp =>
-              Logger[F].trace(s"📠 ${AnsiColorCodes.red}Consul response ${AnsiColorCodes.reset}") >>
-                resp
-                  .as[Json]
-                  .map {
-                    _
-                      .asArray
-                      .toVector
-                      .flatten
-                      .flatMap {
-                        _.asObject
-                          .flatMap(_("Service"))
-                          .flatMap(_.as[Uri.Authority].toOption)
-                          .toVector
-                      }
-                  }
-                  .tupleRight(resp.headers.get[ConsulIndex])
-            }
-            .timeout(longPollTimeout + 1.second)
-            .handleErrorWith { ex =>
-              Logger[F].error(ex)(s"📠 ${AnsiColorCodes.red}Consul response error ${AnsiColorCodes.reset}") >> ex.raiseError
-            }
-      }
-  }
-
-  private def traceFinalizeCase[F[_] : Trace]: ExitCase => F[Unit] =
-    exitCase => Trace[F].put("ExitCase" -> exitCase.toString)
-
-  private def logFinalizeCase[F[_] : Logger](serviceName: ServiceName): ExitCase => F[Unit] = {
-    case Resource.ExitCase.Succeeded => Logger[F].trace(s"👋 finalized Succeeded lookup($serviceName, …).client.run")
-    case Resource.ExitCase.Errored(e) => Logger[F].trace(e)(s"👋 finalized Errored lookup($serviceName, …).client.run")
-    case Resource.ExitCase.Canceled => Logger[F].trace(s"👋 finalized Canceled lookup($serviceName, …).client.run")
-  }
-
-  /**
-   * Starts a background process tied to the scope of the returned `Resource` that will
-   * long-poll the Consul API for updates to the set of available instances of the given
-   * named service.
-   *
-   * @param serviceName the service to look up in the Consul API
-   * @param initialValue the initial list of available instances, typically obtained by calling [[lookup]]
-   * @param initialConsulIndex the initial Consul index value, typically obtained by calling [[lookup]]
-   * @param consulBase the base URI where the Consul API can be accessed, e.g. [[http://localhost:8500]]
-   * @param longPollTimeout the maximum amount of time to wait before Consul should return a response
-   * @param client the `org.http4s.client.Client[F]` used to interact with the Consul API. Should be configured not to timeout on blocking queries
-   * @param entryPoint an optional EntryPoint used to construct new traces for background requests. If none, a no-op span is used instead.
-   * @return a `cats.effect.Resource` managing the background process and containing an effect to view the current set of available instances
-   */
-  private def continuallyUpdating[F[_] : Temporal : Logger](serviceName: ServiceName,
-                                                            initialValue: Vector[Uri.Authority],
-                                                            initialConsulIndex: Option[ConsulIndex],
-                                                            consulBase: Uri,
-                                                            longPollTimeout: FiniteDuration,
-                                                            client: Client[F],
-                                                            entryPoint: Option[EntryPoint[F]],
-                                                           )
-                                                           (implicit L: Local[F, Span[F]]): Resource[F, F[Vector[Uri.Authority]]] =
-    Stream.unfoldEval(initialConsulIndex) { maybeIndex =>
-      inNewLinkedRootSpan(entryPoint) { // since this is a background task, it doesn't make sense
-        import natchez.mtl._            // to directly attach it to the trace that initially started it,
-                                        // but linking it to the new root span is helpful
-
-        lookup[F](serviceName, consulBase, maybeIndex, longPollTimeout, client)
-          .map(_.leftMap(_.some)) // if we successfully got values, wrap them in Some so we can unNone later
-          .handleErrorWith {
-            // TODO maybe we should introduce some kind of escalating delay here?
-            Logger[F].warn(_)("🔥 An exception occurred getting service details from Consul; retrying")
-              .as((none[Vector[Uri.Authority]], maybeIndex)) // continue successfully, but emit None so the failure can be filtered out later
-          }
-          .map(_.some) // this stream will unfold forever (well, until its Resource is finalized)
-      }
-    }
-      .unNone          // errors returned by `lookup` are emitted as None, so filter them out
-      .holdResource(initialValue)
-      .onFinalize(Logger[F].trace(s"👋 shutting down continuallyUpdating($serviceName, …)"))
-      .map(_.get)
-
-  private def inNewLinkedRootSpan[F[_] : MonadCancelThrow, A](entryPoint: Option[EntryPoint[F]])
-                                                             (fa: F[A])
-                                                             (implicit L: Local[F, Span[F]]): F[A] =
-    OptionT.fromOption[Resource[F, *]](entryPoint)
-      .semiflatMap { ep =>
-        natchez.mtl.natchezMtlTraceForLocal
-          .kernel
-          .map(Span.Options.Defaults.withLink)
-          .toResource
-          .flatMap {
-            ep.root("com.dwolla.consul.ConsulServiceDiscoveryAlg.continuallyUpdating", _)
-          }
-      }
-      .getOrElse(Span.noop)
-      .use(Local[F, Span[F]].scope(fa))
 
   private[consul] def serviceListUri(consulBase: Uri,
                                      serviceName: ServiceName,
@@ -239,8 +310,6 @@ object ConsulServiceDiscoveryAlg {
                                      longPollTimeout: FiniteDuration,
                                     ): Uri =
     consulBase / "v1" / "health" / "service" / serviceName +? OnlyHealthyServices +?? index +?? index.as(WaitPeriod(longPollTimeout))
-
-  private implicit def jsonEntityDecoder[F[_] : Concurrent, A: Decoder]: EntityDecoder[F, A] = jsonOf[F, A]
 
   @deprecated("maintained for binary compatibility: this version doesn't place background traces in the proper scope", "0.3.1")
   def apply[F[_]](consulBaseUri: Uri,
@@ -268,6 +337,7 @@ object ConsulServiceDiscoveryAlg {
   }
 }
 
+@deprecated("no longer used since authorityForService semantics changed to block when no services are available", "v0.3.3")
 abstract class AbstractConsulServiceDiscoveryAlg[F[_] : Random : Monad] extends ConsulServiceDiscoveryAlg[F] {
   override def authorityForService(serviceName: ServiceName): Resource[F, F[Uri.Authority]] =
     authoritiesForService(serviceName)
