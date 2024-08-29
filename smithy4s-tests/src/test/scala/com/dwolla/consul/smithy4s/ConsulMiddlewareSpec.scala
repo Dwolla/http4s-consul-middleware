@@ -26,7 +26,8 @@ import smithy4s.json.Json
 
 class ConsulMiddlewareSpec
   extends CatsEffectSuite
-    with ScalaCheckEffectSuite {
+    with ScalaCheckEffectSuite
+    with ConsulMiddlewareSpecPlatform {
 
   private val genUserInfo: Gen[UserInfo] =
     for {
@@ -58,7 +59,7 @@ class ConsulMiddlewareSpec
                              expected: GreetOutput) =>
       SimpleRestJsonBuilder(HelloService)
         .client(Client.fromHttpApp(new TestServiceImpl[IO](consulAuthority, expected).routes.orNotFound))
-        .uri(UriFromService(HelloService))
+        .uri(serviceUri)
         .middleware(new ConsulMiddleware(new FakeConsuleUriResolver[IO](consulAuthority)))
         .resource
         .use(_.greet(input))
@@ -68,8 +69,10 @@ class ConsulMiddlewareSpec
   }
 }
 
-class FakeConsuleUriResolver[F[_] : Applicative : Console](consulAuthority: Uri.Authority) extends ConsulUriResolver[F] {
-  private val baseAuthority: Uri.Authority = UriAuthorityFromService(HelloService)
+class FakeConsuleUriResolver[F[_] : Applicative : Console](consulAuthority: Uri.Authority)
+  extends ConsulUriResolver[F]
+    with FakeConsulUriResolverPlatform {
+
   private val consul = scheme"consul"
 
   override def resolve(uri: Uri): F[Uri] =
