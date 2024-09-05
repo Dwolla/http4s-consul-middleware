@@ -12,22 +12,22 @@ import scala.reflect.macros.blackbox
 object DiscoveryMacros {
   private val consulScheme: Scheme = scheme"consul"
 
-  def makeUri[Alg[_[_, _, _, _, _]], Op[_, _, _, _, _]](c: blackbox.Context)
-                                                       (service: c.Expr[smithy4s.Service.Mixin[Alg, Op]]): c.Expr[Uri] = {
+  def makeUri[Alg[_[_, _, _, _, _]]](c: blackbox.Context)
+                                    (service: c.Expr[smithy4s.Service[Alg]]): c.Expr[Uri] = {
     import c.universe.{Try => _, _}
 
-    c.Expr[Uri](q"org.http4s.Uri(scheme = scala.Option(org.http4s.Uri.Scheme.unsafeFromString(${consulScheme.value})), authority = scala.Option(org.http4s.Uri.Authority(None, ${makeHost[Alg, Op](c)(service)}, None)))")
+    c.Expr[Uri](q"org.http4s.Uri(scheme = scala.Option(org.http4s.Uri.Scheme.unsafeFromString(${consulScheme.value})), authority = scala.Option(org.http4s.Uri.Authority(None, ${makeHost[Alg](c)(service)}, None)))")
   }
 
-  def makeUriAuthority[Alg[_[_, _, _, _, _]], Op[_, _, _, _, _]](c: blackbox.Context)
-                                                                (service: c.Expr[smithy4s.Service.Mixin[Alg, Op]]): c.Expr[Uri.Authority] = {
+  def makeUriAuthority[Alg[_[_, _, _, _, _]]](c: blackbox.Context)
+                                             (service: c.Expr[smithy4s.Service[Alg]]): c.Expr[Uri.Authority] = {
     import c.universe.{Try => _, _}
 
-    c.Expr[Uri.Authority](q"org.http4s.Uri.Authority(host =${makeHost[Alg, Op](c)(service)})")
+    c.Expr[Uri.Authority](q"org.http4s.Uri.Authority(host =${makeHost[Alg](c)(service)})")
   }
 
-  def makeHost[Alg[_[_, _, _, _, _]], Op[_, _, _, _, _]](c: blackbox.Context)
-                                                        (service: c.Expr[smithy4s.Service.Mixin[Alg, Op]]): c.Expr[Host] = {
+  def makeHost[Alg[_[_, _, _, _, _]]](c: blackbox.Context)
+                                     (service: c.Expr[smithy4s.Service[Alg]]): c.Expr[Host] = {
     import c.universe.{Try => _, _}
 
     val cleanService = c.untypecheck(service.tree.duplicate)
@@ -48,16 +48,16 @@ object DiscoveryMacros {
 }
 
 object UriAuthorityFromService {
-  def apply[Alg[_[_, _, _, _, _]], Op[_, _, _, _, _]](service: Service.Mixin[Alg, Op]): Uri.Authority =
-    macro DiscoveryMacros.makeUriAuthority[Alg, Op]
+  def apply[Alg[_[_, _, _, _, _]]](service: Service[Alg]): Uri.Authority =
+    macro DiscoveryMacros.makeUriAuthority[Alg]
 }
 
 object HostFromService {
-  def apply[Alg[_[_, _, _, _, _]], Op[_, _, _, _, _]](service: Service.Mixin[Alg, Op]): Host =
-    macro DiscoveryMacros.makeHost[Alg, Op]
+  def apply[Alg[_[_, _, _, _, _]]](service: Service[Alg]): Host =
+    macro DiscoveryMacros.makeHost[Alg]
 }
 
 object UriFromService {
-  def apply[Alg[_[_, _, _, _, _]], Op[_, _, _, _, _]](service: Service.Mixin[Alg, Op]): Uri =
-    macro DiscoveryMacros.makeUri[Alg, Op]
+  def apply[Alg[_[_, _, _, _, _]]](service: Service[Alg]): Uri =
+    macro DiscoveryMacros.makeUri[Alg]
 }
