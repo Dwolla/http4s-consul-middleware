@@ -17,7 +17,7 @@ import io.circe.literal._
 import io.circe.syntax._
 import io.circe.{Encoder, Json}
 import fs2._
-import fs2.concurrent.SignallingRef
+import fs2.concurrent.{Signal, SignallingRef}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import natchez.Span
 import natchez.noop.NoopEntrypoint
@@ -237,7 +237,7 @@ trait ConsulApi[F[_]] {
   def app: HttpApp[F]
 }
 
-private class ConsulApiImpl[F[_] : Temporal, G[_] : Foldable : FunctorFilter](state: SignallingRef[F, (G[ConsulApi.Service], ConsulIndex)])
+private class ConsulApiImpl[F[_] : Temporal, G[_] : Foldable : FunctorFilter](state: Signal[F, (G[ConsulApi.Service], ConsulIndex)])
                                                                              (implicit E: Eq[G[ConsulApi.Service]])
   extends ConsulApi[F]
     with Http4sDsl[F] {

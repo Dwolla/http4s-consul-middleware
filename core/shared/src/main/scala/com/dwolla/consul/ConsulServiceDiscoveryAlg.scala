@@ -20,6 +20,7 @@ import org.http4s.circe.jsonOf
 import org.http4s.client._
 import org.typelevel.log4cats._
 
+import scala.annotation.unused
 import scala.concurrent.duration._
 
 trait ConsulServiceDiscoveryAlg[F[_]] { self =>
@@ -69,7 +70,7 @@ private class ConsulServiceDiscoveryAlgImpl[F[_] : Temporal : Logger : Random](c
   private case class KnownValue(uris: Vector[Uri.Authority]) extends ConsulState
   private case class AwaitingValue(deferred: Deferred[F, Vector[Uri.Authority]]) extends ConsulState
 
-  private def buildStateRef(uriAuthoritySignal: Signal[F, Vector[Uri.Authority]],
+  private def buildStateRef(uriAuthoritySignal: Signal[F, Option[Vector[Uri.Authority]]],
                             supervisor: Supervisor[F],
                            ): F[Ref[F, ConsulState]] =
     ConsulState.await
@@ -78,6 +79,7 @@ private class ConsulServiceDiscoveryAlgImpl[F[_] : Temporal : Logger : Random](c
         supervisor.supervise {
           uriAuthoritySignal
             .discrete
+            .unNoneTerminate
             .evalMap[F, Unit] {
               case v if v.isEmpty =>
                 ConsulState.await // construct a new AwaitingValue in case we need to reset below
@@ -131,7 +133,10 @@ private class ConsulServiceDiscoveryAlgImpl[F[_] : Temporal : Logger : Random](c
 
   override def authoritiesForService(serviceName: ServiceName): Resource[F, F[Vector[Uri.Authority]]] =
     continuallyUpdating(serviceName, consulBaseUri, longPollTimeout, client, entryPoint)
-      .map(_.get)
+      .map(_.get.flatMap[Vector[Uri.Authority]] {
+        case Some(v) => v.pure[F]
+        case None => new IllegalStateException("this case should not be possible; please open an issue on GitHub").raiseError
+      })
       .onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)"))
 
   /**
@@ -182,7 +187,6 @@ private class ConsulServiceDiscoveryAlgImpl[F[_] : Temporal : Logger : Random](c
                           .toVector
                       }
                   }
-//                  .flatTap(v => Logger[F].trace(s"🛰 got $v from Consul"))
                   .tupleRight(resp.headers.get[ConsulIndex])
             }
             .timeout(longPollTimeout + 1.second)
@@ -218,7 +222,7 @@ private class ConsulServiceDiscoveryAlgImpl[F[_] : Temporal : Logger : Random](c
                                   longPollTimeout: FiniteDuration,
                                   client: Client[F],
                                   entryPoint: Option[EntryPoint[F]],
-                                 ): Resource[F, Signal[F, Vector[Uri.Authority]]] =
+                                 ): Resource[F, Signal[F, Option[Vector[Uri.Authority]]]] =
     Stream.unfoldEval(none[ConsulIndex]) { maybeIndex =>
         inNewLinkedRootSpan(entryPoint) { // since this is a background task, it doesn't make sense
                                           // to directly attach it to the trace that initially started it,
@@ -234,6 +238,7 @@ private class ConsulServiceDiscoveryAlgImpl[F[_] : Temporal : Logger : Random](c
         }
       }
       .unNone          // errors returned by `lookup` are emitted as None, so filter them out
+      .noneTerminate   // wrap values in Some so the Signal created by hold1Resource can be terminated on None
       .hold1Resource
       .map(_.changes)
       .onFinalize(Logger[F].trace(s"👋 shutting down continuallyUpdating($serviceName, …)"))
@@ -327,7 +332,7 @@ object ConsulServiceDiscoveryAlg {
                   F: Temporal[F],
                   L: LoggerFactory[F],
                   R: Random[F],
-                  T: Trace[F]): F[ConsulServiceDiscoveryAlg[F]] =
+                  @unused T: Trace[F]): F[ConsulServiceDiscoveryAlg[F]] =
     apply(consulBaseUri, longPollTimeout, client)(F, L, R, new BrokenIllegalNoopLocalSpan(F))
 
   private class BrokenIllegalNoopLocalSpan[F[_]](A: Applicative[F]) extends Local[F, Span[F]] {
