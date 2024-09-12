@@ -45,11 +45,16 @@ lazy val root = tlCrossRootProject.aggregate(
 lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   .crossType(CrossType.Full)
   .in(file("core"))
+  .enablePlugins(ShadingPlugin)
   .settings(
     description := "http4s middleware to discover the host and port for an HTTP request using Consul",
     tpolecatScalacOptions += ScalacOptions.release("8"),
     tlVersionIntroduced := Map("3" -> "0.3.1", "2.12" -> "0.0.1", "2.13" -> "0.0.1"),
     scalacOptions ++= List("-Vimplicits").filter(_ => scalaVersion.value.startsWith("2.13")),
+    shadingVerbose := true,
+    shadedModules += "io.monix" %% "newtypes-core",
+    shadingRules += ShadingRule.moveUnder("monix", "shaded"),
+    validNamespaces ++= Set("com", "shaded"),
     libraryDependencies ++= {
       Seq(
         "org.http4s" %%% "http4s-client" % http4sVersion,
