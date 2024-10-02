@@ -5,7 +5,6 @@ import cats.effect.{Trace => _, _}
 import cats.effect.std.Random
 import cats.mtl.Local
 import cats.syntax.all._
-import com.dwolla.consul._
 import com.dwolla.consul.examples.ConsulMiddlewareApp.consulAwareClient
 import com.dwolla.consul.http4s.ConsulMiddleware
 import fs2.Stream
