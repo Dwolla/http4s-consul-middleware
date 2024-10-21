@@ -20,6 +20,14 @@ pull_request_rules:
   - '#approved-reviews-by>=1'
   actions:
     merge: {}
+- name: Label consul-discoverable-smithy-spec PRs
+  conditions:
+  - files~=^consul-discoverable-smithy-spec/
+  actions:
+    label:
+      add:
+      - consul-discoverable-smithy-spec
+      remove: []
 - name: Label core PRs
   conditions:
   - files~=^core/
