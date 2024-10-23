@@ -40,6 +40,7 @@ lazy val root = tlCrossRootProject.aggregate(
   `http4s-consul-middleware`,
   `smithy4s-consul-middleware`,
   `smithy4s-consul-middleware-tests`,
+  `consul-discoverable-smithy-spec`,
 )
 
 lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
@@ -91,9 +92,24 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
     )
   )
 
+lazy val `consul-discoverable-smithy-spec` = project
+  .in(file("consul-discoverable-smithy-spec"))
+  .settings(
+    autoScalaLibrary := false,
+    crossPaths := false,
+    Compile / packageSrc / mappings := (Compile / packageSrc / mappings).value
+      .filterNot { case (file, path) =>
+        path.equalsIgnoreCase("META-INF/smithy/manifest")
+      },
+    resolvers += Resolver.mavenLocal,
+    libraryDependencies += "software.amazon.smithy" % "smithy-model" % "1.50.0",
+    tlVersionIntroduced := Map("3" -> "0.3.4", "2.12" -> "0.3.4", "2.13" -> "0.3.4"),
+  )
+
 lazy val `smithy4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   .crossType(CrossType.Pure)
   .in(file("smithy4s"))
+  .configure(_.dependsOn(`consul-discoverable-smithy-spec`))
   .settings(
     description := "smithy4s middleware to rewrite URLs back to the consul://{service} format expected by http4s-consul-middleware",
     tpolecatScalacOptions += ScalacOptions.release("8"),
@@ -101,9 +117,6 @@ lazy val `smithy4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
     libraryDependencies ++= Seq(
       "org.http4s" %%% "http4s-client" % http4sVersion,
       "com.disneystreaming.smithy4s" %%% "smithy4s-core" % smithy4sVersion.value,
-    ),
-    Compile / smithy4sInputDirs := List(
-      baseDirectory.value.getParentFile / "src" / "main" / "smithy",
     ),
   )
   .jsSettings(
