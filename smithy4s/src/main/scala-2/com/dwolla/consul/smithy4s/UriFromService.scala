@@ -10,7 +10,7 @@ import org.http4s.syntax.all._
 import scala.reflect.macros.blackbox
 
 object DiscoveryMacros {
-  private val consulScheme: Scheme = scheme"consul"
+  val consulScheme: Scheme = scheme"consul"
 
   def makeUri[Alg[_[_, _, _, _, _]]](c: blackbox.Context)
                                     (service: c.Expr[smithy4s.Service[Alg]]): c.Expr[Uri] = {

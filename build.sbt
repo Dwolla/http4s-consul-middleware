@@ -142,6 +142,14 @@ lazy val `smithy4s-consul-middleware-tests` = crossProject(JSPlatform, JVMPlatfo
         "com.comcast" %%% "ip4s-test-kit" % "3.6.0" % Test,
       )
     },
+    libraryDependencies ++= {
+      (scalaBinaryVersion.value) match {
+        case "2.12" | "2.13" =>
+          Seq("org.scala-lang" % "scala-compiler" % scalaVersion.value % Test)
+        case _ =>
+          Nil
+      }
+    },
     Compile / smithy4sInputDirs := List(
       baseDirectory.value.getParentFile / "src" / "main" / "smithy",
     ),
