@@ -117,6 +117,7 @@ lazy val `smithy4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
     libraryDependencies ++= Seq(
       "org.http4s" %%% "http4s-client" % http4sVersion,
       "com.disneystreaming.smithy4s" %%% "smithy4s-core" % smithy4sVersion.value,
+      "org.typelevel" %% "scalac-compat-annotation" % "0.1.4",
     ),
   )
   .jsSettings(
@@ -141,6 +142,14 @@ lazy val `smithy4s-consul-middleware-tests` = crossProject(JSPlatform, JVMPlatfo
         "org.http4s" %%% "http4s-dsl" % http4sVersion % Test,
         "com.comcast" %%% "ip4s-test-kit" % "3.6.0" % Test,
       )
+    },
+    libraryDependencies ++= {
+      (scalaBinaryVersion.value) match {
+        case "2.12" | "2.13" =>
+          Seq("org.scala-lang" % "scala-compiler" % scalaVersion.value % Test)
+        case _ =>
+          Nil
+      }
     },
     Compile / smithy4sInputDirs := List(
       baseDirectory.value.getParentFile / "src" / "main" / "smithy",

@@ -29,7 +29,3 @@ class UriFromServiceSpec extends FunSuite {
     }
   }
 }
-
-trait NotASmithy4sService[F[_]]
-object NotASmithy4sService
-trait NotASmithy4sServiceAndHasNoCompanionObject[F[_]]
