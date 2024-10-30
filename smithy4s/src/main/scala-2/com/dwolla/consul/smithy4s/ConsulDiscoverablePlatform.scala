@@ -2,7 +2,8 @@ package com.dwolla.consul.smithy4s
 
 import cats.syntax.all._
 import com.dwolla.consul.smithy._
-import org.http4s.Uri.Host
+import org.http4s.Uri.{Host, Scheme}
+import org.typelevel.scalaccompat.annotation.nowarn212
 import smithy4s.Hints
 
 import scala.reflect.macros.whitebox
@@ -14,8 +15,18 @@ trait ConsulDiscoverablePlatform {
 }
 
 object ConsulDiscoverableMacros {
+  @nowarn212("msg=local val (liftableScheme|liftableHost) in method makeInstance is never used")
   def makeInstance[Alg[_[_]]](c: whitebox.Context): c.Expr[ConsulDiscoverable[Alg]] = {
     import c.universe.{Try => _, _}
+
+    implicit val liftableScheme: Liftable[Scheme] = Liftable { scheme: Scheme =>
+      q"""_root_.org.http4s.Uri.Scheme.unsafeFromString(${scheme.value})"""
+    }
+    implicit val liftableHost: Liftable[Host] = Liftable { host: Host =>
+      q"""_root_.org.http4s.Uri.Host.unsafeFromString(${host.value})"""
+    }
+
+    val consulScheme = DiscoveryMacros.consulScheme.some
 
     def findHintsInTree(tpe: Tree): Either[String, Hints] =
       Try {
@@ -44,9 +55,9 @@ object ConsulDiscoverableMacros {
       c.Expr[ConsulDiscoverable[Alg]](
         q"""
           new _root_.com.dwolla.consul.smithy4s.ConsulDiscoverable[$tpe] {
-            override def host: _root_.org.http4s.Uri.Host = _root_.org.http4s.Uri.Host.unsafeFromString(${host.value})
+            override def host: _root_.org.http4s.Uri.Host = $host
             override def uriAuthority: _root_.org.http4s.Uri.Authority = _root_.org.http4s.Uri.Authority(host = host)
-            override def uri: _root_.org.http4s.Uri = _root_.org.http4s.Uri(scheme = _root_.scala.Option(_root_.com.dwolla.consul.smithy4s.DiscoveryMacros.consulScheme), authority = _root_.scala.Option(uriAuthority))
+            override def uri: _root_.org.http4s.Uri = _root_.org.http4s.Uri(scheme = $consulScheme, authority = _root_.scala.Option(uriAuthority))
           }
         """)
 

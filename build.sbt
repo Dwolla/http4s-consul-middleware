@@ -117,6 +117,7 @@ lazy val `smithy4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
     libraryDependencies ++= Seq(
       "org.http4s" %%% "http4s-client" % http4sVersion,
       "com.disneystreaming.smithy4s" %%% "smithy4s-core" % smithy4sVersion.value,
+      "org.typelevel" %% "scalac-compat-annotation" % "0.1.4",
     ),
   )
   .jsSettings(
