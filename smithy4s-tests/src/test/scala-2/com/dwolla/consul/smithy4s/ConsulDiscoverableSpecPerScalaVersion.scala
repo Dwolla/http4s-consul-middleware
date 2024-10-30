@@ -1,5 +1,6 @@
-package com.dwolla.consul.smithy4s
+package some_other_package
 
+import com.dwolla.consul.smithy4s._
 import com.dwolla.test.HelloService
 import munit.FunSuite
 import org.http4s.Uri

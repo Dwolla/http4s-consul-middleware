@@ -1,4 +1,4 @@
-package com.dwolla.consul.smithy4s
+package some_other_package
 
 import munit._
 
