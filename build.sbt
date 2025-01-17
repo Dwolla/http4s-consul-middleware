@@ -102,7 +102,7 @@ lazy val `consul-discoverable-smithy-spec` = project
         path.equalsIgnoreCase("META-INF/smithy/manifest")
       },
     resolvers += Resolver.mavenLocal,
-    libraryDependencies += "software.amazon.smithy" % "smithy-model" % "1.53.0",
+    libraryDependencies += "software.amazon.smithy" % "smithy-model" % "1.54.0",
     tlVersionIntroduced := Map("3" -> "0.3.4", "2.12" -> "0.3.4", "2.13" -> "0.3.4"),
   )
 
