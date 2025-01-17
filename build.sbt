@@ -34,7 +34,7 @@ ThisBuild / mergifySuccessConditions += MergifyCondition.Custom("#approved-revie
 
 lazy val log4catsVersion = "2.7.0"
 lazy val http4sVersion = "0.23.30"
-lazy val munitVersion = "1.0.3"
+lazy val munitVersion = "1.0.4"
 
 lazy val root = tlCrossRootProject.aggregate(
   `http4s-consul-middleware`,
