@@ -33,7 +33,7 @@ ThisBuild / mergifyStewardConfig ~= { _.map {
 ThisBuild / mergifySuccessConditions += MergifyCondition.Custom("#approved-reviews-by>=1")
 
 lazy val log4catsVersion = "2.7.0"
-lazy val http4sVersion = "0.23.29"
+lazy val http4sVersion = "0.23.30"
 lazy val munitVersion = "1.0.3"
 
 lazy val root = tlCrossRootProject.aggregate(
