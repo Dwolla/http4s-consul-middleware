@@ -12,6 +12,6 @@ libraryDependencies ++= {
   Seq(
     "org.http4s" %% "http4s-ember-client" % http4sVersion,
     "org.http4s" %% "http4s-circe" % http4sVersion,
-    "io.circe" %% "circe-generic" % "0.14.10",
+    "io.circe" %% "circe-generic" % "0.14.11",
   )
 }
