@@ -62,9 +62,9 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
         "org.typelevel" %%% "case-insensitive" % "1.4.2",
         "org.typelevel" %%% "cats-effect" % "3.5.7",
         "org.typelevel" %%% "cats-mtl" % "1.5.0",
-        "org.tpolecat" %%% "natchez-core" % "0.3.7",
-        "org.tpolecat" %%% "natchez-mtl" % "0.3.7",
-        "org.tpolecat" %%% "natchez-noop" % "0.3.7",
+        "org.tpolecat" %%% "natchez-core" % "0.3.8",
+        "org.tpolecat" %%% "natchez-mtl" % "0.3.8",
+        "org.tpolecat" %%% "natchez-noop" % "0.3.8",
         "org.typelevel" %%% "log4cats-noop" % log4catsVersion % Test,
         "org.http4s" %%% "http4s-ember-client" % http4sVersion % Test,
         "org.http4s" %%% "http4s-dsl" % http4sVersion % Test,
@@ -81,12 +81,12 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   )
   .jvmSettings(
     libraryDependencies ++= Seq(
-      "org.tpolecat" %%% "natchez-jaeger" % "0.3.7" % Test,
+      "org.tpolecat" %%% "natchez-jaeger" % "0.3.8" % Test,
     )
   )
   .jsSettings(
     libraryDependencies ++= Seq(
-      "org.tpolecat" %%% "natchez-noop" % "0.3.7" % Test,
+      "org.tpolecat" %%% "natchez-noop" % "0.3.8" % Test,
       "io.github.cquiroz" %%% "scala-java-time" % "2.6.0" % Test,
       "io.github.cquiroz" %%% "scala-java-time-tzdb" % "2.6.0" % Test,
     )
