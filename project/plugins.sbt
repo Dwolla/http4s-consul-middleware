@@ -4,7 +4,7 @@ addSbtPlugin("org.typelevel" % "sbt-typelevel-mergify" % "0.7.7")
 addSbtPlugin("org.portable-scala" % "sbt-crossproject" % "1.3.2")
 addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.3.2")
 addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.19.0")
-addSbtPlugin("com.disneystreaming.smithy4s"  % "smithy4s-sbt-codegen" % "0.18.29")
+addSbtPlugin("com.disneystreaming.smithy4s"  % "smithy4s-sbt-codegen" % "0.18.35")
 
 libraryDependencies ++= {
   val http4sVersion = "0.23.30"
