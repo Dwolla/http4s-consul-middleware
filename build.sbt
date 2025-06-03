@@ -25,7 +25,6 @@ tpolecatScalacOptions += ScalacOptions.release("8")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / tlCiReleaseBranches := Seq("main")
 ThisBuild / tlBaseVersion := "0.3"
-ThisBuild / sonatypeCredentialHost := xerial.sbt.Sonatype.sonatypeLegacy
 ThisBuild / mergifyStewardConfig ~= { _.map {
   _.withAuthor("dwolla-oss-scala-steward[bot]")
     .withMergeMinors(true)
