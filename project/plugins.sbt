@@ -7,7 +7,7 @@ addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.20.1")
 addSbtPlugin("com.disneystreaming.smithy4s"  % "smithy4s-sbt-codegen" % "0.18.42")
 
 libraryDependencies ++= {
-  val http4sVersion = "0.23.31"
+  val http4sVersion = "0.23.32"
 
   Seq(
     "org.http4s" %% "http4s-ember-client" % http4sVersion,
