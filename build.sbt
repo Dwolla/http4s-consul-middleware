@@ -72,7 +72,7 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
         "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
         "com.comcast" %%% "ip4s-test-kit" % "3.7.0" % Test,
       ) ++ (if (scalaVersion.value.startsWith("2.")) Seq(
-        compilerPlugin("org.typelevel" %% "kind-projector" % "0.13.3" cross CrossVersion.full),
+        compilerPlugin("org.typelevel" %% "kind-projector" % "0.13.4" cross CrossVersion.full),
         compilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
       )
       else Seq.empty)
