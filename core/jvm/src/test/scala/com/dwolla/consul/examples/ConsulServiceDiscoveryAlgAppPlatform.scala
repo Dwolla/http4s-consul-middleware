@@ -10,7 +10,7 @@ import org.typelevel.log4cats.slf4j.Slf4jFactory
 
 import java.net.URI
 
-trait ConsulServiceDiscoveryAlgAppPlatform extends IOApp.Simple with LocalTracing {
+trait ConsulServiceDiscoveryAlgAppPlatform extends IOApp.Simple {
   private def jaegerEntryPoint[F[_] : Sync]: Resource[F, EntryPoint[F]] =
     Jaeger.entryPoint("ConsulServiceDiscoveryAlgApp", Either.catchNonFatal(new URI("http://localhost:16686")).toOption) { c =>
       Sync[F].delay {
@@ -27,7 +27,7 @@ trait ConsulServiceDiscoveryAlgAppPlatform extends IOApp.Simple with LocalTracin
           .evalMap {
             implicit val loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
 
-            IOLocal(_).flatMap { implicit l =>
+            IO.local(_).flatMap { implicit l =>
               new ConsulServiceDiscoveryAlgApp(ep).run
             }
           }

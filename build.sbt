@@ -1,7 +1,7 @@
 import org.typelevel.sbt.gha.MatrixExclude
 import org.typelevel.scalacoptions.ScalacOptions
 
-ThisBuild / crossScalaVersions := Seq("3.3.6", "2.13.16", "2.12.20")
+ThisBuild / crossScalaVersions := Seq("3.3.6", "2.13.17", "2.12.20")
 ThisBuild / scalaVersion := (ThisBuild / crossScalaVersions).value.head
 ThisBuild / githubWorkflowBuildMatrixExclusions := Seq(
   MatrixExclude(Map(
@@ -49,7 +49,7 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
     description := "http4s middleware to discover the host and port for an HTTP request using Consul",
     tpolecatScalacOptions += ScalacOptions.release("8"),
     tlVersionIntroduced := Map("3" -> "0.3.1", "2.12" -> "0.0.1", "2.13" -> "0.0.1"),
-    scalacOptions ++= List("-Vimplicits").filter(_ => scalaVersion.value.startsWith("2.13")),
+    scalacOptions ++= SuppressKindPolymorphicInferAnyOn213(scalaVersion.value),
     libraryDependencies ++= {
       Seq(
         "org.http4s" %%% "http4s-client" % http4sVersion,
@@ -150,6 +150,7 @@ lazy val `smithy4s-consul-middleware-tests` = crossProject(JSPlatform, JVMPlatfo
           Nil
       }
     },
+    scalacOptions ++= SuppressKindPolymorphicInferAnyOn213(scalaVersion.value),
     Compile / smithy4sInputDirs := List(
       baseDirectory.value.getParentFile / "src" / "main" / "smithy",
     ),
