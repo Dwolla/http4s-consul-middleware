@@ -12,7 +12,6 @@ import com.comcast.ip4s.{IpAddress, Port}
 import com.dwolla.consul.ConsulApi.Service._
 import com.dwolla.consul.ConsulApi.ServiceProgression
 import com.dwolla.consul.arbitraries._
-import com.dwolla.consul.examples.LocalTracing
 import io.circe.literal._
 import io.circe.syntax._
 import io.circe.{Encoder, Json}
@@ -40,8 +39,7 @@ import scala.util
 class ConsulServiceDiscoveryAlgSpec
   extends CatsEffectSuite
     with ScalaCheckEffectSuite
-    with cats.effect.std.ArbitraryRandom
-    with LocalTracing {
+    with cats.effect.std.ArbitraryRandom {
   implicit val loggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
 
   test("Consul service lookup URI construction") {
@@ -75,7 +73,7 @@ class ConsulServiceDiscoveryAlgSpec
       val program = ConsulApi[IO](NonEmptyChain.of(services), 10.seconds)
         .map(consulApi => Client.fromHttpApp(consulApi.app))
         .use { http4sClient =>
-          IOLocal(Span.noop[IO]).flatMap { implicit ioLocal =>
+          IO.local(Span.noop[IO]).flatMap { implicit ioLocal =>
             for {
               alg <- ConsulServiceDiscoveryAlg(uri"/", 5.seconds, http4sClient)
               serviceName <- Random[IO].shuffleVector(services).map(_.headOption.map(_.name).getOrElse(ServiceName("missing")))
@@ -110,7 +108,7 @@ class ConsulServiceDiscoveryAlgSpec
       val program =
         entryPoint
           .root("authorityForService returns a randomly selected instance, and blocks when no instances are available")
-          .evalMap(IOLocal(_))
+          .evalMap(IO.local)
           .flatMap { implicit ioLocal =>
             ConsulApi[IO](serviceProgression, stateChangeRate = 10.seconds)
               .map(consulApi => Client.fromHttpApp(consulApi.app))

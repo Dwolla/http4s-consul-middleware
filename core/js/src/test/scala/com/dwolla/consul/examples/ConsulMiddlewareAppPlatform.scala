@@ -7,10 +7,10 @@ import natchez.noop.NoopEntrypoint
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
 
-trait ConsulMiddlewareAppPlatform extends IOApp.Simple with LocalTracing {
+trait ConsulMiddlewareAppPlatform extends IOApp.Simple {
   private implicit val noOpFactory: LoggerFactory[IO] = NoOpFactory[IO]
 
-  override def run: IO[Unit] = IOLocal(Span.noop[IO]).map(catsMtlEffectLocalForIO(_)).flatMap { implicit L =>
+  override def run: IO[Unit] = IO.local(Span.noop[IO]).flatMap { implicit L =>
     new ConsulMiddlewareApp[IO](NoopEntrypoint[IO]()).run
   }
 }
