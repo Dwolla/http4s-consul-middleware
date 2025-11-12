@@ -135,6 +135,15 @@ private class ConsulServiceDiscoveryAlgImpl[F[_] : Temporal : Logger : Random](c
       .onFinalize(Logger[F].trace(s"👋 shutting down authoritiesForService($serviceName)"))
 
   /**
+   * [[https://www.consul.io/api-docs/health#blocking-queries Consul's documentation]] says
+   * "A small random amount of additional `wait` time is added to the supplied maximum wait time
+   * to spread out the wake up time of any concurrent requests. This adds up to `wait / 16` additional
+   * time to the maximum duration."
+   ]
+   */
+  private val consulAdditionalRandomWaitTimeFactor: Double = 17.0/16.0
+
+  /**
    * Makes a request of the Consul API to retrieve the set of healthy instances for the given service.
    *
    * @param serviceName the service to look up in the Consul API
@@ -166,28 +175,28 @@ private class ConsulServiceDiscoveryAlgImpl[F[_] : Temporal : Logger : Random](c
             .run(req)
             .onFinalizeCase(logFinalizeCase(serviceName))
             .onFinalizeCase(traceFinalizeCase)
+            .timeout((longPollTimeout * consulAdditionalRandomWaitTimeFactor) + 1.second)
             .use { resp =>
               Logger[F].trace(s"📠 ${AnsiColorCodes.red}Consul response ${AnsiColorCodes.reset}") >>
                 resp
                   .as[Json]
-                  .map {
+                  .flatMap {
                     _
                       .asArray
                       .toVector
                       .flatten
-                      .flatMap {
-                        _.asObject
-                          .flatMap(_("Service"))
-                          .flatMap(_.as[Uri.Authority].toOption)
-                          .toVector
+                      .traverse {
+                        _.asAccumulating[Uri.Authority]
+                          .toEither
+                          .leftMap(Errors(_))
+                          .liftTo[F]
                       }
                   }
-//                  .flatTap(v => Logger[F].trace(s"🛰 got $v from Consul"))
                   .tupleRight(resp.headers.get[ConsulIndex])
             }
-            .timeout(longPollTimeout + 1.second)
-            .handleErrorWith { ex =>
-              Logger[F].error(ex)(s"📠 ${AnsiColorCodes.red}Consul response error ${AnsiColorCodes.reset}") >> ex.raiseError
+            .onError {
+              case ex if !ex.isInstanceOf[java.util.concurrent.TimeoutException] =>
+                Logger[F].error(ex)(s"📠 ${AnsiColorCodes.red}Consul response error${AnsiColorCodes.reset}")
             }
       }
   }
