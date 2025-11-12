@@ -180,19 +180,18 @@ private class ConsulServiceDiscoveryAlgImpl[F[_] : Temporal : Logger : Random](c
               Logger[F].trace(s"📠 ${AnsiColorCodes.red}Consul response ${AnsiColorCodes.reset}") >>
                 resp
                   .as[Json]
-                  .map {
+                  .flatMap {
                     _
                       .asArray
                       .toVector
                       .flatten
-                      .flatMap {
-                        _.asObject
-                          .flatMap(_("Service"))
-                          .flatMap(_.as[Uri.Authority].toOption)
-                          .toVector
+                      .traverse {
+                        _.asAccumulating[Uri.Authority]
+                          .toEither
+                          .leftMap(Errors(_))
+                          .liftTo[F]
                       }
                   }
-//                  .flatTap(v => Logger[F].trace(s"🛰 got $v from Consul"))
                   .tupleRight(resp.headers.get[ConsulIndex])
             }
             .onError {

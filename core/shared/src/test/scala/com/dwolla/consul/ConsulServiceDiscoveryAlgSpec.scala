@@ -79,7 +79,9 @@ class ConsulServiceDiscoveryAlgSpec
                     serviceName <- Random[IO].shuffleVector(services).map(_.headOption.map(_.name).getOrElse(ServiceName("missing")))
                     output <- alg.authoritiesForService(serviceName).use(_.delayBy(10.millis)) // delay a bit to make sure the background request is also made
                     expected = services.collect {
-                      case ConsulApi.Service(`serviceName`, host, port, true) =>
+                      case ConsulApi.Service(`serviceName`, Some(host), _, port, true) =>
+                        Uri.Authority(None, Host.fromIpAddress(host), port.value.some)
+                      case ConsulApi.Service(`serviceName`, None, host, port, true) =>
                         Uri.Authority(None, Host.fromIpAddress(host), port.value.some)
                     }
                   } yield {
@@ -124,9 +126,10 @@ class ConsulServiceDiscoveryAlgSpec
           }
 
       TestControl.executeEmbed(program)
-        .map { case (output, logged) =>
+        .map { case (output: NonEmptyChain[Uri.Authority] @unchecked, logged) =>
           // TODO could we do more assertions? it's not obvious how because the selected instances will be randomly picked
           assertEquals(output.length, serviceProgression.length)
+          assert(output.toList.forall(_.host.toString.nonEmpty))
           assert(!logged.exists(_.throwOpt.isDefined), logged.filter(message => message.throwOpt.isDefined).mkString("\n"))
         }
     }
@@ -136,7 +139,7 @@ class ConsulServiceDiscoveryAlgSpec
 object ConsulApi {
   type ServiceProgression = (ServiceName, Option[Boolean]) => NonEmptyChain[Vector[ConsulApi.Service]]
 
-  case class Service(name: ServiceName, address: IpAddress, port: Port, isHealthy: Boolean)
+  case class Service(name: ServiceName, address: Option[IpAddress], nodeAddress: IpAddress, port: Port, isHealthy: Boolean)
 
   object Service {
     implicit val showService: Show[Service] = Show.fromToString
@@ -144,11 +147,12 @@ object ConsulApi {
 
     val genService: Gen[(ServiceName, Option[Boolean]) => Service] =
       for {
-        address <- arbitrary[IpAddress]
+        address <- arbitrary[Option[IpAddress]]
+        nodeAddress <- arbitrary[IpAddress]
         port <- arbitrary[Port]
         healthy <- arbitrary[Boolean]
       } yield { (serviceName: ServiceName, healthOverride: Option[Boolean]) =>
-        Service(serviceName, address, port, healthOverride.getOrElse(healthy))
+        Service(serviceName, address, nodeAddress, port, healthOverride.getOrElse(healthy))
       }
 
     implicit val arbService: Arbitrary[Service] = Arbitrary {
@@ -195,10 +199,12 @@ object ConsulApi {
 
     implicit val encoder: Encoder[Service] = a =>
       json"""{
-          "Node": {},
+          "Node": {
+            "Address": ${a.nodeAddress.toString}
+          },
           "Service": {
             "Service": ${a.name},
-            "Address": ${a.address.toString},
+            "Address": ${a.address.map(_.toString).getOrElse("")},
             "Port": ${a.port.value}
           },
           "Checks": [
@@ -254,7 +260,7 @@ private class ConsulApiImpl[F[_] : Temporal : Random, G[_] : Foldable : FunctorF
   private def servicesAsJson(services: G[ConsulApi.Service],
                              serviceName: ServiceName): Json =
     services.filter {
-      case ConsulApi.Service(`serviceName`, _, _, isHealthy) => isHealthy
+      case ConsulApi.Service(`serviceName`, _, _, _, isHealthy) => isHealthy
       case _ => false
     }.asJson(Encoder.encodeFoldable)
 

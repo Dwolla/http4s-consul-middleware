@@ -15,11 +15,20 @@ trait ThirdPartyTypeCodecs {
   implicit val encodePort: Encoder[ip4s.Port] = Encoder[Int].contramap(_.value)
   implicit val decodePort: Decoder[ip4s.Port] = Decoder[Int].emap(ip4s.Port.fromInt(_).toRight("Port could not be decoded"))
 
-  implicit val uriAuthorityDecoder: Decoder[Uri.Authority] = (c: HCursor) =>
-    for {
-      host <- c.downField("Address").as[IpAddress].map(Host.fromIpAddress)
-      port <- c.downField("Port").as[Port].map(_.value.some)
-    } yield Uri.Authority(None, host, port)
+  implicit val uriAuthorityDecoder: Decoder[Uri.Authority] = Decoder.accumulatingInstance { (c: HCursor) =>
+    val host =
+      c.downField("Service")
+        .downField("Address")
+        .asAcc[IpAddress]
+        .findValid {
+          c.downField("Node").downField("Address").asAcc[IpAddress]
+        }
+        .map(Host.fromIpAddress)
+
+    val port = c.downField("Service").downField("Port").asAcc[Port].map(_.value.some)
+
+    (host, port).mapN(Uri.Authority(None, _, _))
+  }
 
   implicit val uriAuthorityEncoder: Encoder[Uri.Authority] = (a: Uri.Authority) =>
     json"""
