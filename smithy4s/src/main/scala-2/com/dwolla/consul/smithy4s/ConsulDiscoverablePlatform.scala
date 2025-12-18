@@ -1,8 +1,10 @@
 package com.dwolla.consul.smithy4s
 
 import cats.syntax.all._
-import com.dwolla.consul.smithy._
-import org.http4s.Uri.{Host, Scheme}
+import com.dwolla.consul.ServiceName
+import com.dwolla.consul.smithy
+import com.dwolla.consul.smithy.{ServiceName => _, _}
+import org.http4s.Uri
 import org.typelevel.scalaccompat.annotation.nowarn212
 import smithy4s.Hints
 
@@ -15,18 +17,16 @@ trait ConsulDiscoverablePlatform {
 }
 
 object ConsulDiscoverableMacros {
-  @nowarn212("msg=local val (liftableScheme|liftableHost) in method makeInstance is never used")
+  @nowarn212("msg=local val (liftableServiceName|liftableHost) in method makeInstance is never used")
   def makeInstance[Alg[_[_]]](c: whitebox.Context): c.Expr[ConsulDiscoverable[Alg]] = {
     import c.universe.{Try => _, _}
 
-    implicit val liftableScheme: Liftable[Scheme] = Liftable { scheme: Scheme =>
-      q"""_root_.org.http4s.Uri.Scheme.unsafeFromString(${scheme.value})"""
-    }
-    implicit val liftableHost: Liftable[Host] = Liftable { host: Host =>
+    implicit val liftableHost: Liftable[Uri.Host] = Liftable { host: Uri.Host =>
       q"""_root_.org.http4s.Uri.Host.unsafeFromString(${host.value})"""
     }
-
-    val consulScheme = DiscoveryMacros.consulScheme.some
+    implicit val liftableServiceName: Liftable[ServiceName] = Liftable { serviceName: ServiceName =>
+      q"""_root_.com.dwolla.consul.ServiceName(${serviceName.value})"""
+    }
 
     def findHintsInTree(tpe: Tree): Either[String, Hints] =
       Try {
@@ -45,20 +45,17 @@ object ConsulDiscoverableMacros {
       _.get(Discoverable.tagInstance)
         .toRight(s"could not find Discoverable hint for $tpe")
 
-    val getHostFromDiscoverable: PartialFunction[Discoverable, Either[String, Host]] = {
-      case Discoverable(ServiceName(serviceName)) =>
-        Host.fromString(serviceName)
+    val getHostFromDiscoverable: PartialFunction[Discoverable, Either[String, (ServiceName, Uri.Host)]] = {
+      case Discoverable(smithy.ServiceName(serviceName)) =>
+        Uri.Host.fromString(serviceName)
           .leftMap(_.message)
+          .tupleLeft(ServiceName(serviceName))
     }
 
-    def hostToConsulDiscoverableExpr(tpe: Tree): Host => c.Expr[ConsulDiscoverable[Alg]] = host =>
+    def hostToConsulDiscoverableExpr(tpe: Tree): (ServiceName, Uri.Host) => c.Expr[ConsulDiscoverable[Alg]] = (serviceName, host) =>
       c.Expr[ConsulDiscoverable[Alg]](
         q"""
-          new _root_.com.dwolla.consul.smithy4s.ConsulDiscoverable[$tpe] {
-            override def host: _root_.org.http4s.Uri.Host = $host
-            override def uriAuthority: _root_.org.http4s.Uri.Authority = _root_.org.http4s.Uri.Authority(host = host)
-            override def uri: _root_.org.http4s.Uri = _root_.org.http4s.Uri(scheme = $consulScheme, authority = _root_.scala.Option(uriAuthority))
-          }
+          _root_.com.dwolla.consul.smithy4s.ConsulDiscoverable.make[$tpe]($serviceName, $host)
         """)
 
     c.macroApplication match {
@@ -66,7 +63,7 @@ object ConsulDiscoverableMacros {
         val maybeExpr = findHintsInTree(tpe)
           .flatMap(getDiscoverableFromHints(tpe))
           .flatMap(getHostFromDiscoverable)
-          .map(hostToConsulDiscoverableExpr(tpe))
+          .map(hostToConsulDiscoverableExpr(tpe).tupled)
 
         maybeExpr.fold(c.abort(c.enclosingPosition, _), identity)
       case TypeApply(_, List(tpe)) if tpe.symbol.companion == NoSymbol =>
