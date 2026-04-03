@@ -57,7 +57,7 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
         "io.circe" %%% "circe-literal" % "0.14.15",
         "io.monix" %%% "newtypes-core" % "0.2.3",
         "org.typelevel" %%% "log4cats-core" % log4catsVersion,
-        "org.typelevel" %%% "keypool" % "0.4.10",
+        "org.typelevel" %%% "keypool" % "0.4.11",
         "org.typelevel" %%% "case-insensitive" % "1.5.0",
         "org.typelevel" %%% "cats-effect" % "3.7.0",
         "org.typelevel" %%% "cats-mtl" % "1.6.0",
