@@ -64,15 +64,10 @@ package consul {
     implicit val waitQueryParamEncoder: QueryParamEncoder[WaitPeriod] = QueryParamEncoder[String].contramap(d => s"${d.value.toSeconds}s")
     implicit val waitQueryParamDecoder: QueryParamDecoder[WaitPeriod] =
       fromUnsafeCast[WaitPeriod] { _.value match {
-        case regex(value, unit) =>
-          val valueInt = value.toInt
-
-          val seconds = unit match {
-            case "s" => valueInt
-            case "m" => valueInt * 60
-          }
-
-          WaitPeriod(seconds.seconds)
+        case regex(value, "s") =>
+          WaitPeriod(value.toInt.seconds)
+        case regex(value, "m") =>
+          WaitPeriod((value.toInt * 60).seconds)
         case other => throw new MatchError(other)
       }}("WaitPeriod")
     implicit val waitPeriodTraceableValue: TraceableValue[WaitPeriod] =
