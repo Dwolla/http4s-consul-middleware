@@ -1,6 +1,6 @@
 package com.dwolla.consul.examples
 
-import cats.effect.{Trace => _, _}
+import cats.effect._
 import cats.syntax.all._
 import io.jaegertracing.Configuration._
 import natchez._
