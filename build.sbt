@@ -1,5 +1,4 @@
 import org.typelevel.sbt.gha.MatrixExclude
-import org.typelevel.scalacoptions.ScalacOptions
 
 ThisBuild / crossScalaVersions := Seq("3.3.8", "2.13.18", "2.12.21")
 ThisBuild / scalaVersion := (ThisBuild / crossScalaVersions).value.head
@@ -21,7 +20,6 @@ ThisBuild / developers := List(
   ),
 )
 ThisBuild / startYear := Option(2022)
-tpolecatScalacOptions += ScalacOptions.release("8")
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.temurin("17"))
 ThisBuild / tlCiReleaseBranches := Seq("main")
 ThisBuild / tlBaseVersion := "0.3"
@@ -47,7 +45,6 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   .in(file("core"))
   .settings(
     description := "http4s middleware to discover the host and port for an HTTP request using Consul",
-    tpolecatScalacOptions += ScalacOptions.release("8"),
     tlVersionIntroduced := Map("3" -> "0.3.1", "2.12" -> "0.0.1", "2.13" -> "0.0.1"),
     scalacOptions ++= SuppressKindPolymorphicInferAnyOn213(scalaVersion.value),
     libraryDependencies ++= {
@@ -112,7 +109,6 @@ lazy val `smithy4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   .configure(_.dependsOn(`consul-discoverable-smithy-spec`))
   .settings(
     description := "smithy4s middleware to rewrite URLs back to the consul://{service} format expected by http4s-consul-middleware",
-    tpolecatScalacOptions += ScalacOptions.release("8"),
     tlVersionIntroduced := Map("3" -> "0.3.2", "2.12" -> "0.3.2", "2.13" -> "0.3.2"),
     libraryDependencies ++= Seq(
       "org.http4s" %%% "http4s-client" % http4sVersion,
@@ -122,7 +118,8 @@ lazy val `smithy4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform)
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    crossScalaVersions ~= (_.filterNot(_.startsWith("2.12"))),
+    crossScalaVersions := (ThisBuild / crossScalaVersions).value.filterNot(_.startsWith("2.12")),
+    scalaVersion := crossScalaVersions.value.head,
   )
   .dependsOn(`http4s-consul-middleware`)
   .enablePlugins(Smithy4sCodegenPlugin)
@@ -158,7 +155,8 @@ lazy val `smithy4s-consul-middleware-tests` = crossProject(JSPlatform, JVMPlatfo
   )
   .jsSettings(
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
-    crossScalaVersions ~= (_.filterNot(_.startsWith("2.12"))),
+    crossScalaVersions := (ThisBuild / crossScalaVersions).value.filterNot(_.startsWith("2.12")),
+    scalaVersion := crossScalaVersions.value.head,
   )
   .dependsOn(`smithy4s-consul-middleware`)
   .enablePlugins(Smithy4sCodegenPlugin, NoPublishPlugin)
