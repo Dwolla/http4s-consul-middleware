@@ -1,6 +1,6 @@
 import org.typelevel.sbt.gha.MatrixExclude
 
-ThisBuild / crossScalaVersions := Seq("3.3.8", "2.13.18", "2.12.21")
+ThisBuild / crossScalaVersions := Seq("3.3.9", "2.13.18", "2.12.21")
 ThisBuild / scalaVersion := (ThisBuild / crossScalaVersions).value.head
 ThisBuild / githubWorkflowBuildMatrixExclusions := Seq(
   MatrixExclude(Map(
