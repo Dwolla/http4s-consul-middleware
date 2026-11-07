@@ -30,7 +30,7 @@ jobs:
         os: [ubuntu-24.04]
         scala: [3, 2.13, 2.12]
         java: [temurin@17]
-        project: [rootJS, rootJVM, rootNative]
+        project: [rootJS, rootJVM, rootNative, http4s-consul-middlewareNative]
         exclude:
           - scala: 2.12
             project: rootJS
@@ -38,6 +38,8 @@ jobs:
             project: rootNative
           - scala: 2.12
             project: rootNative
+          - scala: 3
+            project: http4s-consul-middlewareNative
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
@@ -180,12 +182,32 @@ jobs:
           tar xf targets.tar
           rm targets.tar
 
+      - name: Download target directories (2.13, http4s-consul-middlewareNative)
+        uses: actions/download-artifact@v6
+        with:
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.13-http4s-consul-middlewareNative
+
+      - name: Inflate target directories (2.13, http4s-consul-middlewareNative)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
       - name: Download target directories (2.12, rootJVM)
         uses: actions/download-artifact@v6
         with:
           name: target-${{ matrix.os }}-${{ matrix.java }}-2.12-rootJVM
 
       - name: Inflate target directories (2.12, rootJVM)
+        run: |
+          tar xf targets.tar
+          rm targets.tar
+
+      - name: Download target directories (2.12, http4s-consul-middlewareNative)
+        uses: actions/download-artifact@v6
+        with:
+          name: target-${{ matrix.os }}-${{ matrix.java }}-2.12-http4s-consul-middlewareNative
+
+      - name: Inflate target directories (2.12, http4s-consul-middlewareNative)
         run: |
           tar xf targets.tar
           rm targets.tar

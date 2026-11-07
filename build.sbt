@@ -9,7 +9,7 @@ ThisBuild / githubWorkflowBuildMatrixExclusions := Seq(
   )),
   // smithy4s publishes Scala Native artifacts for Scala 3 only, and sbt's `++ 2.x` leaves those
   // Scala 3-only projects in rootNative, so they fail to resolve against the switched core project.
-  // The core Native artifacts for Scala 2 are still published (and checked by MiMa) at release time.
+  // The core Native project gets its own 2.13 and 2.12 cells instead (see the matrix additions below).
   MatrixExclude(Map(
     "scala" -> "2.13",
     "project" -> "rootNative",
@@ -18,7 +18,15 @@ ThisBuild / githubWorkflowBuildMatrixExclusions := Seq(
     "scala" -> "2.12",
     "project" -> "rootNative",
   )),
+  // rootNative already covers the core Native project on Scala 3
+  MatrixExclude(Map(
+    "scala" -> "3",
+    "project" -> "http4s-consul-middlewareNative",
+  )),
 )
+ThisBuild / githubWorkflowBuildMatrixAdditions ~= { matrix =>
+  matrix.updated("project", matrix.getOrElse("project", Nil) :+ "http4s-consul-middlewareNative")
+}
 ThisBuild / organization := "com.dwolla"
 ThisBuild / homepage := Some(url("https://github.com/Dwolla/http4s-consul-middleware"))
 ThisBuild / licenses += ("MIT", url("https://opensource.org/licenses/MIT"))
