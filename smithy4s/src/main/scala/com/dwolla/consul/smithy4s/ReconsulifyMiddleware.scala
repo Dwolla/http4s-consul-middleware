@@ -39,7 +39,7 @@ import smithy4s.{Endpoint, Service}
  */
 class ReconsulifyMiddleware[F[_] : MonadCancelThrow] extends Endpoint.Middleware[Client[F]] {
   override def prepare[Alg[_[_, _, _, _, _]]](service: Service[Alg])
-                                             (endpoint: service.Endpoint[_, _, _, _, _]): Client[F] => Client[F] =
+                                             (endpoint: service.Endpoint[?, ?, ?, ?, ?]): Client[F] => Client[F] =
     client => Client { (req: Request[F]) =>
       service.hints.get(Discoverable.tagInstance) match {
         case Some(Discoverable(ServiceName(serviceName))) if req.uri.authority.map(_.host.value).contains(serviceName) =>
