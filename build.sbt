@@ -109,7 +109,7 @@ lazy val `http4s-consul-middleware` = crossProject(JSPlatform, JVMPlatform, Nati
   // eviction errors for downstream builds that still use 0.2.x. Its first Scala Native release
   // is 0.3.0, and the native artifacts are new, so they can start on the current version.
   .platformsSettings(JVMPlatform, JSPlatform)(
-    libraryDependencies += "io.monix" %%% "newtypes-core" % "0.2.3",
+    libraryDependencies += "io.monix" %%% "newtypes-core" % "0.4.1",
   )
   .nativeSettings(
     libraryDependencies += "io.monix" %%% "newtypes-core" % "1.0.0",
