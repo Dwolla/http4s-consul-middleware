@@ -52,7 +52,7 @@ ThisBuild / mergifyStewardConfig ~= { _.map {
 ThisBuild / mergifySuccessConditions += MergifyCondition.Custom("#approved-reviews-by>=1")
 
 lazy val log4catsVersion = "2.8.0"
-lazy val http4sVersion = "0.23.38"
+lazy val http4sVersion = "0.23.39"
 lazy val munitVersion = "1.3.6"
 
 // Scala Native adds its compiler plugin with -Xplugin, which Scala 3's scaladoc ignores but warns about.
